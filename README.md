@@ -2,15 +2,71 @@
 
 ## Project Background
 
-[Please add project background]
+The Department of Technology and Innovation (DTI) is the City of Chicago’s central IT
+agency. DTI manages the City’s core technology infrastructure, digital services, data
+management, data analytics, and applied data science. Our data team applies data science
+and advanced analytics, including model development, forecasting, and pattern detection,
+to strengthen decision-making, improve service delivery, and build more accessible,
+resident-centered digital tools.
+
+This project will evaluate the impact of Chicago’s Energy Rating Placards, introduced in 2019, on building energy performance. Using multi-year benchmarking data (2015–2024), the analysis will examine how energy efficiency, greenhouse gas intensity, and other performance indicators have evolved across time, building types, and neighborhoods.
+
+The study will focus on statistical and predictive modeling to measure changes and identify drivers of performance improvements. Visualization will be used as a supporting tool to communicate results, not as a primary deliverable.
+
+Key questions include:
+- Have energy efficiency and greenhouse gas intensity improved since the introduction of placards, citywide and across building categories?
+- Do buildings that started with lower energy ratings show greater improvements compared to higher-rated peers?
+- Which building characteristics (size, age, use type, energy mix) are most strongly associated with performance changes over time?
+
 
 ## Project Goals
 
-[Please add project goals]
+1. Data Integration and Preparation
+    - Compile benchmarking data from 2015–2024.
+    - Clean and preprocess data: handle missing values, normalize metrics, align variables across years.
+    - Construct a dataset suitable for trend analysis and modeling.
+2. Exploratory Data Analysis (EDA)
+    - Summary statistics for Energy Star scores, EUI, greenhouse gas emissions, and water use before and after the introduction of placards.
+    - Visualizations (trend lines, boxplots, heatmaps) to highlight temporal and categorical patterns.
+    - Correlation analysis between energy metrics and building characteristics.
+3. Comparative and Statistical Analysis
+    - Pre/post comparisons (2015–2018 vs. 2019–2024) of energy efficiency and emissions.
+    - Subgroup comparisons by building type and initial rating level.
+    - Regression-based tests (including difference-in-differences style models) to evaluate shifts associated with placards.
+4. Predictive Modeling
+    - Develop models (logistic regression, random forest, gradient boosting) to identify building characteristics linked to performance improvement.
+    - Evaluate models with cross-validation and performance metrics (ROC-AUC, precision/recall).
+    - Use feature importance analysis to identify the strongest predictors.
+5. Final Report
+    - Synthesize findings from EDA, comparative analysis, and modeling.
+    - Include clear visualizations (trend plots, model feature importance charts) to illustrate results.
+    - Provide policy-relevant insights on the role of placards in driving building performance improvements.
+
+## Data
+
+- Chicago Energy Benchmarking: Includes property locations and sizes along with their energy metrics such as the energy star score, the total site energy use intensity (EUI), water use, electricity use, natural gas use, and other fuel use.
+- [2014 Data Reported in 2015](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2014-Data-Reported-in-/tepd-j7h5/about_data)
+- [2015 Data Reported in 2016](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2015-Data-Reported-in-/ebtp-548e/about_data)
+- [2016 Data Reported in 2017](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2016-Data-Reported-in-/fpwt-snya/about_data)
+- [2017 Data Reported in 2018](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2017-Data-Reported-in-/j2ev-2azp/about_data)
+- [2018 Data Reported in 2019 (First year with Chicago Energy Rating)](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2018-Data-Reported-in-/m2kv-bmi3/about_data)
+- [2019 Data Reported in 2020](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2019-Data-Reported-in-/jn94-it7m/about_data)
+- [2020 Data Reported in 2021](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2020-Data-Reported-in-/ydbk-8hi6/about_data)
+- [2021 Data Reported in 2023](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2021-Data-Reported-in-/gkf4-txtp/about_data)
+- [2022 Data Reported in 2023](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2022-Data-Reported-in-/mz3g-jagv/about_data)
+- [2023 Data Reported in 2024](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2023-Data-Reported-in-/3a36-5x9a/about_data)
+
+## Other Resources
+- [Chicago Energy Benchmarking](https://www.chicago.gov/city/en/progs/env/building-energy-benchmarking---transparency.html)
+- [Launch of Chicago Energy Rating System](https://www.chicago.gov/city/en/depts/mayor/press_room/press_releases/2019/august/EnergyRatingSystem.html)
+
 
 ## First Week
+
 - Complete the quick start below, making sure that you can find the file `sample_output.csv`.
-[Please add first week activities]
+- Start data integration and preparation (Goal 1)
+- Identify key variables of interest and create visualizations to begin exploring patterns
+
 
 ### Docker
 

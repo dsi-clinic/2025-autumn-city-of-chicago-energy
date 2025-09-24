@@ -45,16 +45,16 @@ Key questions include:
 ## Data
 
 - Chicago Energy Benchmarking: Includes property locations and sizes along with their energy metrics such as the energy star score, the total site energy use intensity (EUI), water use, electricity use, natural gas use, and other fuel use.
-- [2014 Data Reported in 2015](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2014-Data-Reported-in-/tepd-j7h5/about_data)
-- [2015 Data Reported in 2016](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2015-Data-Reported-in-/ebtp-548e/about_data)
-- [2016 Data Reported in 2017](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2016-Data-Reported-in-/fpwt-snya/about_data)
-- [2017 Data Reported in 2018](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2017-Data-Reported-in-/j2ev-2azp/about_data)
-- [2018 Data Reported in 2019 (First year with Chicago Energy Rating)](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2018-Data-Reported-in-/m2kv-bmi3/about_data)
-- [2019 Data Reported in 2020](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2019-Data-Reported-in-/jn94-it7m/about_data)
-- [2020 Data Reported in 2021](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2020-Data-Reported-in-/ydbk-8hi6/about_data)
-- [2021 Data Reported in 2023](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2021-Data-Reported-in-/gkf4-txtp/about_data)
-- [2022 Data Reported in 2023](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2022-Data-Reported-in-/mz3g-jagv/about_data)
-- [2023 Data Reported in 2024](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2023-Data-Reported-in-/3a36-5x9a/about_data)
+    - [2014 Data Reported in 2015](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2014-Data-Reported-in-/tepd-j7h5/about_data)
+    - [2015 Data Reported in 2016](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2015-Data-Reported-in-/ebtp-548e/about_data)
+    - [2016 Data Reported in 2017](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2016-Data-Reported-in-/fpwt-snya/about_data)
+    - [2017 Data Reported in 2018](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2017-Data-Reported-in-/j2ev-2azp/about_data)
+    - [2018 Data Reported in 2019 (First year with Chicago Energy Rating)](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2018-Data-Reported-in-/m2kv-bmi3/about_data)
+    - [2019 Data Reported in 2020](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2019-Data-Reported-in-/jn94-it7m/about_data)
+    - [2020 Data Reported in 2021](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2020-Data-Reported-in-/ydbk-8hi6/about_data)
+    - [2021 Data Reported in 2023](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2021-Data-Reported-in-/gkf4-txtp/about_data)
+    - [2022 Data Reported in 2023](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2022-Data-Reported-in-/mz3g-jagv/about_data)
+    - [2023 Data Reported in 2024](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2023-Data-Reported-in-/3a36-5x9a/about_data)
 
 ## Other Resources
 - [Chicago Energy Benchmarking](https://www.chicago.gov/city/en/progs/env/building-energy-benchmarking---transparency.html)

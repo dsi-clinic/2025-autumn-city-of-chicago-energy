@@ -21,11 +21,8 @@ else
     $(error Unsupported operating system. Please set DOCKER_SSH_AUTH_SOCK manually)
 endif
 
-<<<<<<< HEAD
 export DOCKER_SSH_AUTH_SOCK
 
-=======
->>>>>>> 94b246b (Add git and SSH support to Docker interactive environment)
 # Check required environment variables
 ifeq ($(DATA_DIR),)
     $(error DATA_DIR must be set in .env file)
@@ -44,10 +41,6 @@ build-only:
 	docker compose build
 
 run-interactive: build-only
-<<<<<<< HEAD
-=======
-	@export DOCKER_SSH_AUTH_SOCK=$(DOCKER_SSH_AUTH_SOCK); \
->>>>>>> 94b246b (Add git and SSH support to Docker interactive environment)
 	docker compose run -it --rm $(mount_data) $(project_name) /bin/bash
 
 run-notebooks: build-only	

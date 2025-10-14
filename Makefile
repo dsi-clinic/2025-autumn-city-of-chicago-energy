@@ -21,8 +21,11 @@ else
     $(error Unsupported operating system. Please set DOCKER_SSH_AUTH_SOCK manually)
 endif
 
+<<<<<<< HEAD
 export DOCKER_SSH_AUTH_SOCK
 
+=======
+>>>>>>> 94b246b (Add git and SSH support to Docker interactive environment)
 # Check required environment variables
 ifeq ($(DATA_DIR),)
     $(error DATA_DIR must be set in .env file)
@@ -37,15 +40,22 @@ mount_data := -v $(DATA_DIR):/project/data
 
 # Build Docker image 
 build-only: 
+	@export DOCKER_SSH_AUTH_SOCK=$(DOCKER_SSH_AUTH_SOCK); \
 	docker compose build
 
 run-interactive: build-only
+<<<<<<< HEAD
+=======
+	@export DOCKER_SSH_AUTH_SOCK=$(DOCKER_SSH_AUTH_SOCK); \
+>>>>>>> 94b246b (Add git and SSH support to Docker interactive environment)
 	docker compose run -it --rm $(mount_data) $(project_name) /bin/bash
 
 run-notebooks: build-only	
+	@export DOCKER_SSH_AUTH_SOCK=$(DOCKER_SSH_AUTH_SOCK); \
 	docker compose run --rm -p 8888:8888 -t $(mount_data) $(project_name) uv run jupyter lab --port=8888 --ip='*' --NotebookApp.token='' --NotebookApp.password='' --no-browser --allow-root
 
 test-pipeline: build-only
+	@export DOCKER_SSH_AUTH_SOCK=$(DOCKER_SSH_AUTH_SOCK); \
 	docker compose run --rm $(mount_data) $(project_name) uv run python src/utils/pipeline_example.py
 
 clean:

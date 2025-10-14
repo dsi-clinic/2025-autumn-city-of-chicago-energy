@@ -5,10 +5,13 @@ services:
       dockerfile: Dockerfile
     volumes:
       - .:/project/src
+      - ~/.gitconfig:/etc/gitconfig
+      - ${DOCKER_SSH_AUTH_SOCK}:${DOCKER_SSH_AUTH_SOCK}
     environment:
       REPO_ROOT: /project/src
       DATA_DIR: /project/data
       PYTHONPATH: /project/src
+      SSH_AUTH_SOCK: ${DOCKER_SSH_AUTH_SOCK}
     shm_size: '16gb'
     # At least one of stdin_open or tty is required to make devcontainer work
     stdin_open: true

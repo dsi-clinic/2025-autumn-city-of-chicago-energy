@@ -12,12 +12,12 @@ import seaborn as sns
 
 
 def compare_variable_distribution(
-    df1: pd.DataFrame, 
-    df2: pd.DataFrame, 
-    variable: str, 
-    label1: str = "Before 2019", 
-    label2: str = "After 2019", 
-    log_scale: bool = False
+    df1: pd.DataFrame,
+    df2: pd.DataFrame,
+    variable: str,
+    label1: str = "Before 2019",
+    label2: str = "After 2019",
+    log_scale: bool = False,
 ) -> None:
     """Visualize the distribution of a numeric variable across two DataFrames using boxplots + stripplots.
 

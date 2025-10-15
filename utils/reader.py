@@ -16,7 +16,7 @@ def combine_energy_data(
     output_path: str = "../output/combined_energy_benchmarking.csv",
 ) -> pd.DataFrame:
     """Combines all yearly Chicago Energy Benchmarking CSV files (2014–2023) into a single DataFrame.
-    
+
     Expects files in the format:
         Chicago_Energy_Benchmarking_-_2014_Data_Reported_in_2015_20251002.csv
         ...
@@ -37,7 +37,9 @@ def combine_energy_data(
     """
     data_folder_path = Path(data_folder)
     file_list = sorted(
-        data_folder_path.glob("Chicago_Energy_Benchmarking_-_*_Data_Reported_in_*_20251002.csv")
+        data_folder_path.glob(
+            "Chicago_Energy_Benchmarking_-_*_Data_Reported_in_*_20251002.csv"
+        )
     )
 
     if not file_list:
@@ -58,9 +60,7 @@ def combine_energy_data(
 
     # Combine all dataframes
     combined_df = pd.concat(all_dfs, ignore_index=True)
-    print(
-        f"Combined {len(file_list)} files with {combined_df.shape[0]:,} total rows."
-    )
+    print(f"Combined {len(file_list)} files with {combined_df.shape[0]:,} total rows.")
 
     # Ensure output directory exists
     output_path = Path(output_path)

@@ -1,14 +1,18 @@
+"""Utilities for loading and cleaning Chicago Energy Benchmarking data from CSV files."""
+
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 
-def testing_loader():
+def testing_loader() -> None:
+    """To test whether if the import is working and is the function or just one"""
     return print("found data loader file!")
 
 
-def loading_data():
+def loading_data() -> pd.DataFrame:
+    """Loading in all the data by using the current path then stopping at src then load in the data from there to output a data type consistant dataframe"""
     target_folder = "src"
     current = Path.cwd()
     while current.name != target_folder:

@@ -74,7 +74,8 @@ def merge_all_years(
     data_folder_path = Path(data_folder)
     file_list = sorted(
         data_folder_path.glob(
-            "Chicago_Energy_Benchmarking_-_*_Data_Reported_in_*_20251002.csv"
+            # fix the loading condition for datasets to include year 2016
+            "Chicago_Energy_Benchmarking_-_*_Data_Reported_in_*_*.csv"
         )
     )
 

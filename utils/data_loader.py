@@ -1,6 +1,9 @@
 from pathlib import Path
 import pandas as pd
 import numpy as np
+def testing_loader():
+    return print("found data loader file!")
+
 def loading_data():
     target_folder="src"
     current = Path.cwd()
@@ -12,14 +15,13 @@ def loading_data():
     path = current / "data" / "chicago_energy_benchmarking"
     print(path)
 
-    dfs = []
+    load_dfs = []
     for file in path.rglob("*.csv"):
         print("Reading:", file)
-        dfs.append(pd.read_csv(file))
-    full_df = pd.concat(dfs, axis=0, join='outer', ignore_index=True)
+        load_dfs.append(pd.read_csv(file))
+    full_df = pd.concat(load_dfs, axis=0, join='outer', ignore_index=True)
     full_df = full_df.sort_values(by="Data Year", ascending=True)
 
-    # 1. List columns by conversion type
     str_cols = [
         "Property Name",
         "ZIP Code",

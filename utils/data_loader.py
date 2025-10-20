@@ -34,6 +34,7 @@ def loading_data() -> pd.DataFrame:
 
     str_cols = [
         "Property Name",
+        "Address",
         "ZIP Code",
         "Community Area",
         "Primary Property Type",
@@ -58,8 +59,7 @@ def loading_data() -> pd.DataFrame:
         "GHG Intensity (kg CO2e/sq ft)",
         "Water Use (kGal)",
     ]
-
-    full_df[str_cols] = full_df[str_cols].astype(str)
+    full_df[str_cols] = full_df[str_cols].astype(str).apply(lambda col: col.str.lower())
 
     for col in numeric_cols:
         if col in full_df.columns:
@@ -71,4 +71,6 @@ def loading_data() -> pd.DataFrame:
                 .replace({"": np.nan})
                 .astype("float64", errors="ignore")
             )
+    full_df = full_df.reset_index(drop=True)
+
     return full_df

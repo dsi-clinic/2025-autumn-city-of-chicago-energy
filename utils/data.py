@@ -5,10 +5,17 @@ and converts numeric columns to usable float64 types.
 It automatically handles differences in columns across years and missing values.
 """
 
+import logging
+import os
 import re
 from pathlib import Path
 
 import pandas as pd
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def convert_data_types(df: pd.DataFrame) -> pd.DataFrame:
@@ -52,8 +59,8 @@ def convert_data_types(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def merge_all_years(
-    data_folder: str = "../data/chicago_energy_benchmarking",
-    output_path: str = "..output/merged_data.csv",
+    data_folder: Path = Path(os.environ["DATA_DIR"]),
+    output_path: Path = Path("../output/merged_data.csv"),
 ) -> pd.DataFrame:
     """Merge all yearly Chicago Energy Benchmarking CSVs (2014–2023),
 
@@ -74,7 +81,6 @@ def merge_all_years(
     data_folder_path = Path(data_folder)
     file_list = sorted(
         data_folder_path.glob(
-            # fix the loading condition for datasets to include year 2016
             "Chicago_Energy_Benchmarking_-_*_Data_Reported_in_*_*.csv"
         )
     )
@@ -86,24 +92,22 @@ def merge_all_years(
     all_dfs = []
     for file_path in file_list:
         match = re.search(r"Benchmarking_-_(\d{4})_Data", file_path.name)
-        year = int(match.group(1)) if match else None
+        if not match:
+            logging.warning(f"Skipping file with unexpected name: {file_path.name}")
+            continue
 
-        print(f"Reading {file_path.name} (Year: {year})...")
+        year = int(match.group(1))
+        logging.info(f"Reading {file_path.name} (Year: {year})...")
+
         year_df = pd.read_csv(file_path)
-
-        # Add year
         year_df["Data_Year"] = year
-
-        # Convert numeric columns safely
         year_df = convert_data_types(year_df)
-
         all_dfs.append(year_df)
 
-    # Align all columns (outer join ensures no data loss)
-    merged_df = pd.concat(all_dfs, ignore_index=True, sort=False)
+    merged_df = pd.concat(all_dfs, ignore_index=True)
 
-    print(
-        f"Merged {len(file_list)} files with {merged_df.shape[0]:,} total rows and {merged_df.shape[1]} columns."
+    logging.info(
+        f"Merged {len(file_list)} files with {merged_df.shape[0]:,} rows and {merged_df.shape[1]} columns."
     )
 
     # Save
@@ -111,7 +115,7 @@ def merge_all_years(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     merged_df.to_csv(output_path, index=False)
 
-    print(f"Saved cleaned, merged dataset to: {output_path}")
+    logging.info(f"Saved cleaned, merged dataset to: {output_path}")
 
     return merged_df
 

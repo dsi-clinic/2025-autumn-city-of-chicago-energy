@@ -7,9 +7,16 @@ Includes:
 - Trend plots (mean or median by year)
 """
 
+import logging
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+
+# Configure logging (if not already configured elsewhere)
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def plot_trend_by_year(
@@ -53,7 +60,7 @@ def plot_facet_histograms_by_year(
     """Faceted histograms with shared x/y axes to maintain consistent scale."""
     year_col = "Data Year" if "Data Year" in df.columns else "Data_Year"
     if variable not in df.columns:
-        print(f"⚠️ '{variable}' column not found.")
+        logging.warning(f"'{variable}' column not found.")
         return
 
     x_min, x_max = df[variable].min(), df[variable].max()

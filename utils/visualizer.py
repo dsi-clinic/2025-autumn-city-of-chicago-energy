@@ -13,11 +13,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-# Configure logging (if not already configured elsewhere)
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
 
 def plot_trend_by_year(
     df: pd.DataFrame, numeric_cols: list[str], agg: str = "median"
@@ -82,3 +77,11 @@ def plot_facet_histograms_by_year(
         f"Distribution of {variable} by Year (Consistent Scale)", fontsize=14
     )
     plt.show()
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    )
+    plot_facet_histograms_by_year()

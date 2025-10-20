@@ -12,11 +12,6 @@ from pathlib import Path
 
 import pandas as pd
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
 
 def convert_data_types(df: pd.DataFrame) -> pd.DataFrame:
     """Convert numeric columns in Chicago Energy Benchmarking datasets to float64.
@@ -121,4 +116,8 @@ def merge_all_years(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
     merge_all_years()

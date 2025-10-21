@@ -1,1 +1,1 @@
-"""Project Python code"""
+"""Project Python code."""

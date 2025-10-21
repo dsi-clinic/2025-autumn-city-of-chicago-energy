@@ -79,6 +79,7 @@ def compare_variable_distribution(
     plt.tight_layout()
     plt.show()
 
+
 def plot_bar(
     data: pd.DataFrame,
     x: str,

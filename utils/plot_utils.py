@@ -78,3 +78,84 @@ def compare_variable_distribution(
     plt.xticks(rotation=0)
     plt.tight_layout()
     plt.show()
+
+
+def plot_bar(
+    data: pd.DataFrame,
+    x: str,
+    y: str,
+    hue: str | None = None,
+    title: str | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    palette: str | None = None,
+    figsize: tuple = (8, 5),
+    legend_title: str | None = None,
+    rotate_xticks: int | None = 45,
+    show_values: bool = False,
+) -> None:
+    """Create a customizable bar plot with consistent styling.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        The input DataFrame containing data to plot.
+    x : str
+        Column name for x-axis values.
+    y : str
+        Column name for y-axis values.
+    hue : str, optional
+        Column name for color grouping (default is None).
+    title : str, optional
+        Title of the plot (default is None).
+    xlabel : str, optional
+        Label for the x-axis (default uses the column name).
+    ylabel : str, optional
+        Label for the y-axis (default uses the column name).
+    palette : str, optional
+        Seaborn color palette name (default is "Blues_d").
+    figsize : tuple, optional
+        Figure size in inches (default is (8, 5)).
+    legend_title : str, optional
+        Custom title for the legend (default uses the hue column name).
+    rotate_xticks : int, optional
+        Degrees to rotate x-axis labels (default is 45).
+    show_values : bool, optional
+        Whether to display numeric labels on top of each bar (default is False).
+
+    Returns:
+    -------
+    None
+        Displays the bar plot.
+    """
+    plt.figure(figsize=figsize)
+    ax = sns.barplot(data=data, x=x, y=y, hue=hue, palette=palette)
+
+    # Add title and labels
+    ax.set_title(title or "", fontsize=14)
+    ax.set_xlabel(xlabel or x, fontsize=12)
+    ax.set_ylabel(ylabel or y, fontsize=12)
+
+    # Rotate x-axis labels if needed
+    if rotate_xticks:
+        plt.xticks(rotation=rotate_xticks)
+
+    # Add gridlines
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+
+    # Add legend if applicable
+    if hue:
+        plt.legend(
+            title=legend_title or hue,
+            bbox_to_anchor=(1.05, 1),
+            loc="upper left",
+            frameon=False,
+        )
+
+    # Optionally show values on bars
+    if show_values:
+        for container in ax.containers:
+            ax.bar_label(container, fmt="%.0f", fontsize=9, padding=3)
+
+    plt.tight_layout()
+    plt.show()

@@ -31,8 +31,8 @@ def load_data() -> pd.DataFrame:
     for file in path.rglob("*.csv"):
         logging.debug(f"Reading: {file}")
         load_dfs.append(pd.read_csv(file))
-    full_df = pd.concat(load_dfs, axis=0, ignore_index=True)
-    full_df = full_df.sort_values(by="Data Year", ascending=True)
+    full_df = pd.concat(load_dfs, ignore_index=True)
+    full_df = full_df.sort_values(by="Data Year")
 
     str_cols = [
         "Property Name",

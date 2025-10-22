@@ -58,10 +58,37 @@ sch = main_dataframe[main_dataframe["Primary Property Type"] == "college/univers
 
 alt.data_transformers.disable_max_rows()
 
+hover = alt.selection_point(
+    fields=["Community Area"], on="mouseover", clear=True, nearest=True
+)
+
 lines = (
     alt.Chart(sch)
     .mark_line(strokeWidth=2)
-    .encode(x="Data Year", y="mean(Electricity Use (kBtu))", color="Community Area:N")
+    .encode(
+        x="Data Year:O",
+        y="mean(Electricity Use (kBtu)):Q",
+        color="Community Area:N",
+        tooltip=["Community Area", "Data Year", "mean(Electricity Use (kBtu))"],
+    )
+)
+
+points = (
+    alt.Chart(sch)
+    .mark_point(size=50)
+    .encode(
+        x="Data Year:O",
+        y="mean(Electricity Use (kBtu)):Q",
+        color="Community Area:N",
+        tooltip=["Community Area", "Data Year", "mean(Electricity Use (kBtu))"],
+    )
+)
+
+lines = (
+    (lines + points)
+    .add_params(hover)
+    .encode(opacity=alt.condition(hover, alt.value(1), alt.value(0.2)))
+    .interactive()
 )
 
 left, center, right = st.columns([1, 2, 1])

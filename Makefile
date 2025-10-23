@@ -12,6 +12,17 @@ project_dir := "$(current_abs_path)"
 # environment variables
 include .env
 
+# Set SSH agent configuration based on OS
+ifeq ($(shell uname -s),Darwin)
+    DOCKER_SSH_AUTH_SOCK := /run/host-services/ssh-auth.sock
+else ifeq ($(shell uname -s),Linux)
+    DOCKER_SSH_AUTH_SOCK := $(SSH_AUTH_SOCK)
+else
+    $(error Unsupported operating system. Please set DOCKER_SSH_AUTH_SOCK manually)
+endif
+
+export DOCKER_SSH_AUTH_SOCK
+
 # Check required environment variables
 ifeq ($(DATA_DIR),)
     $(error DATA_DIR must be set in .env file)
@@ -28,7 +39,7 @@ mount_data := -v $(DATA_DIR):/project/data
 build-only: 
 	docker compose build
 
-run-interactive: build-only	
+run-interactive: build-only
 	docker compose run -it --rm $(mount_data) $(project_name) /bin/bash
 
 run-notebooks: build-only	

@@ -1,11 +1,11 @@
 """Utilities for loading and cleaning Chicago Energy Benchmarking data from CSV files."""
 
 import logging
-import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
 
 def clean_numeric(series: pd.Series) -> pd.Series:
     """Cleaning columns to be numeric data type"""
@@ -18,6 +18,7 @@ def clean_numeric(series: pd.Series) -> pd.Series:
     )
 
 def find_src_root(start_path: Path) -> Path:
+    """Finds src path in environment"""
     for parent in [start_path] + list(start_path.parents):
         if parent.name == "src":
             return parent
@@ -84,7 +85,7 @@ def concurrent_buildings(
     id_col: str = "ID",
     year_col: str = "Data Year",
     building_type_col: str = "Primary Property Type",
-    building_type: list = [],
+    building_type: list = None,
 ) -> pd.DataFrame:
     """Filter buildings that have submitted data for all years in a specified range, keeping only records within that range.
 

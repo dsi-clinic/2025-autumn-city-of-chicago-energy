@@ -1,4 +1,4 @@
-"""Pipeline example"""
+"""Pipeline example."""
 
 import os
 from pathlib import Path

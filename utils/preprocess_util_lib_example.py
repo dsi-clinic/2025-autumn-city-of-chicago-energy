@@ -1,4 +1,4 @@
-"""Utilities example"""
+"""Utilities example."""
 
 import os
 

@@ -17,12 +17,14 @@ def clean_numeric(series: pd.Series) -> pd.Series:
         .astype("float64", errors="ignore")
     )
 
+
 def find_src_root(start_path: Path) -> Path:
     """Finds src path in environment"""
     for parent in [start_path] + list(start_path.parents):
         if parent.name == "src":
             return parent
     raise FileNotFoundError("No 'src' directory found in path hierarchy.")
+
 
 def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
@@ -76,7 +78,9 @@ def load_data() -> pd.DataFrame:
 
     return full_df
 
+
 energy_data = load_data()
+
 
 def concurrent_buildings(
     df: pd.DataFrame = energy_data,
@@ -122,7 +126,9 @@ def concurrent_buildings(
         df_in_range = df_in_range[df_in_range[building_type_col].isin(building_type)]
 
     # Group by building ID and collect unique years
-    building_years = df_in_range.groupby(id_col)[year_col].unique().reset_index(name="Years")
+    building_years = (
+        df_in_range.groupby(id_col)[year_col].unique().reset_index(name="Years")
+    )
 
     # Keep only those with full year coverage
     buildings_all_years = building_years[
@@ -130,12 +136,15 @@ def concurrent_buildings(
     ]
 
     # Filter the dataset to only those buildings and within year range
-    filtered_df = df_in_range[df_in_range[id_col].isin(buildings_all_years[id_col])].copy()
+    filtered_df = df_in_range[
+        df_in_range[id_col].isin(buildings_all_years[id_col])
+    ].copy()
 
     # Ensure no duplicates (e.g., multiple entries for same building-year)
     filtered_df = filtered_df.drop_duplicates(subset=[id_col, year_col], keep="first")
 
     return filtered_df
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

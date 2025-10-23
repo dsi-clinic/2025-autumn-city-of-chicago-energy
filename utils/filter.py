@@ -63,9 +63,7 @@ def pivot_energy_metric(
     id_col: str = "ID",
     year_col: str = "Data Year",
 ) -> pd.DataFrame:
-    """Create a pivot table showing an energy metric over time for each building,
-
-    and drop rows with missing values in the specified year range.
+    """Create a pivot table showing an energy metric over time for each building, and drop rows with missing values in the specified year range.
 
     Parameters
     ----------

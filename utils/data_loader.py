@@ -1,7 +1,6 @@
 """Utilities for loading and cleaning Chicago Energy Benchmarking data from CSV files."""
 
 import logging
-import os
 from pathlib import Path
 
 import numpy as np
@@ -22,9 +21,18 @@ def clean_numeric(series: pd.Series) -> pd.Series:
     )
 
 
+def find_src_root(start_path: Path) -> Path:
+    """Finding the correct file path"""
+    for parent in [start_path] + list(start_path.parents):
+        if parent.name == "src":
+            return parent
+    raise FileNotFoundError("No 'src' directory found in path hierarchy.")
+
+
 def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
-    path = Path(os.environ["DATA_DIR"]) / "chicago_energy_benchmarking"
+    src_root = find_src_root(Path.cwd().resolve())
+    path = src_root / "data" / "chicago_energy_benchmarking"
     logging.debug(f"Path: {path}")
 
     load_dfs = []

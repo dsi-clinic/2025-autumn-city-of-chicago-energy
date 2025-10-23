@@ -57,9 +57,7 @@ def merge_all_years(
     data_folder: Path = Path(os.environ["DATA_DIR"]),
     output_path: Path = Path("../output/merged_data.csv"),
 ) -> pd.DataFrame:
-    """Merge all yearly Chicago Energy Benchmarking CSVs (2014–2023),
-
-    standardize column names, and convert numeric columns to usable types.
+    """Merge all yearly Chicago Energy Benchmarking CSVs (2014–2023), standardize column names, and convert numeric columns to usable types.
 
     Parameters
     ----------
@@ -81,7 +79,7 @@ def merge_all_years(
     )
 
     if not file_list:
-        print(f"No matching CSV files found in {data_folder}.")
+        logging.warning(f"No matching CSV files found in {data_folder}.")
         return None
 
     all_dfs = []

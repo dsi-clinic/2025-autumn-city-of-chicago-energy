@@ -78,6 +78,7 @@ def load_data() -> pd.DataFrame:
 
     return full_df
 
+
 # Load in energy data to be used as default value for functions
 energy_data = load_data()
 
@@ -145,6 +146,7 @@ def concurrent_buildings(
 
     return filtered_df
 
+
 def pivot_energy_metric(
     metric_col: str,
     df: pd.DataFrame = energy_data,
@@ -195,6 +197,7 @@ def pivot_energy_metric(
     pivot_df.attrs["year_range"] = (start_year, end_year)
 
     return pivot_df
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

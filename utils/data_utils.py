@@ -78,7 +78,7 @@ def load_data() -> pd.DataFrame:
 
     return full_df
 
-
+# Load in energy data to be used as default value for functions
 energy_data = load_data()
 
 
@@ -145,6 +145,56 @@ def concurrent_buildings(
 
     return filtered_df
 
+def pivot_energy_metric(
+    metric_col: str,
+    df: pd.DataFrame = energy_data,
+    start_year: int = 2016,
+    end_year: int = 2023,
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+) -> pd.DataFrame:
+    """Create a pivot table showing an energy metric over time for each building, and drop rows with missing values in the specified year range.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The energy dataset containing building and year info.
+    metric_col : str
+        The column name of the metric to pivot (e.g., 'Site EUI (kBtu/sq ft)').
+    start_year : int, default = 2016
+        The first year in the building range to consider for dropping nulls.
+    end_year : int, default = 2023
+        The last year in the building range to consider for dropping nulls.
+    id_col : str, default="ID"
+        Column identifying unique buildings.
+    year_col : str, default="Data Year"
+        Column indicating the reporting year.
+
+    Returns:
+    -------
+    pd.DataFrame
+        Pivoted DataFrame with buildings as rows and years as columns,
+        containing the selected metric values. Rows with any null values
+        in the specified year range are dropped.
+    """
+    # Create pivot table
+    pivot_df = df.pivot_table(index=id_col, columns=year_col, values=metric_col)
+
+    # Identify the columns corresponding to the specified year range
+    cols_to_check = [
+        year for year in pivot_df.columns if start_year <= year <= end_year
+    ]
+
+    # Drop rows with any nulls in the specified year range
+    pivot_df = pivot_df.dropna(subset=cols_to_check, how="any")
+
+    # Optional metadata
+    pivot_df.attrs["metric"] = metric_col
+    pivot_df.attrs["num_buildings"] = pivot_df.shape[0]
+    pivot_df.attrs["num_years"] = pivot_df.shape[1]
+    pivot_df.attrs["year_range"] = (start_year, end_year)
+
+    return pivot_df
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

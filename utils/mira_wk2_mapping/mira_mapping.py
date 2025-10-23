@@ -22,8 +22,9 @@ def prepare_geojson(geojson: dict) -> pd.DataFrame:
     )
 
 
+# help plottting spatial maps by aggregate mean metrics
 def aggregate_metric(dff: pd.DataFrame, metric: str) -> pd.DataFrame:
-    """Aggregate a given metric by Community Area and Data Year."""
+    """Aggregate a given metric by Community Area and Data Year using Mean."""
     dff = dff.dropna(subset=["Community Area", metric]).copy()
     dff["Neighborhood"] = dff["Community Area"].str.strip().str.title()
     dff[metric] = pd.to_numeric(dff[metric], errors="coerce")

@@ -4,17 +4,19 @@ import json
 import logging
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
 
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
 
+
+# will be replaced after refactoring
 def load_energy_datasets(data_dir: Path) -> pd.DataFrame:
-    """Loads all Chicago Energy Benchmarking CSV files from the specified directory (recursively).
+    """Loads all Chicago Energy Benchmarking CSV files from the specified directory.
 
     Args:
         data_dir: Path to the directory containing energy benchmarking CSV files.
@@ -26,9 +28,9 @@ def load_energy_datasets(data_dir: Path) -> pd.DataFrame:
         ValueError: If no CSV files are found in the specified directory.
     """
     data_dir = Path(data_dir)
-    logger.info(f"Searching recursively for CSV files under: {data_dir.resolve()}")
+    logger.info(f"Searching for CSV files under: {data_dir.resolve()}")
 
-    csv_files = list(data_dir.rglob("*.csv"))
+    csv_files = list(data_dir.glob("*.csv"))  # Non-recursive
     if not csv_files:
         raise ValueError(f"No CSV files found in {data_dir.resolve()}")
 
@@ -67,18 +69,3 @@ def load_neighborhood_geojson(geojson_path: Path) -> dict:
 
     logger.info(f"Loaded {len(geojson['features'])} features")
     return geojson
-
-
-def generate_random_dataframe(no_rows: int = 10) -> pd.DataFrame:
-    """Generates a random dataframe for testing or debugging.
-
-    Args:
-        no_rows: Number of rows to generate.
-
-    Returns:
-        DataFrame with 4 columns ('A', 'B', 'C', 'D') and no_rows rows.
-    """
-    random_df = pd.DataFrame(
-        np.random.randint(0, no_rows, size=(no_rows, 4)), columns=list("ABCD")
-    )
-    return random_df

@@ -1,10 +1,13 @@
 """Utilities for loading and cleaning Chicago Energy Benchmarking data from CSV files."""
 
+import json
 import logging
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def clean_numeric(series: pd.Series) -> pd.Series:
@@ -197,6 +200,24 @@ def pivot_energy_metric(
     pivot_df.attrs["year_range"] = (start_year, end_year)
 
     return pivot_df
+
+
+def load_neighborhood_geojson(geojson_path: Path) -> dict:
+    """Loads a neighborhood GeoJSON file.
+
+    Args:
+        geojson_path: Path to the neighborhood GeoJSON file.
+
+    Returns:
+        A Python dictionary parsed from the GeoJSON file.
+    """
+    geojson_path = Path(geojson_path)
+    logger.info(f"Loading GeoJSON from: {geojson_path.resolve()}")
+    with geojson_path.open() as f:
+        geojson = json.load(f)
+
+    logger.info(f"Loaded {len(geojson['features'])} features")
+    return geojson
 
 
 if __name__ == "__main__":

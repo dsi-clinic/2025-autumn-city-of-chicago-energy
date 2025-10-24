@@ -28,7 +28,7 @@ def compare_variable_distribution(
     label1: str = "Before 2019",
     label2: str = "After 2019",
     log_scale: bool = False,
-) -> None:
+) -> plt.figure:
     """Visualize the distribution of a numeric variable across two DataFrames using boxplots + stripplots.
 
     Parameters
@@ -48,8 +48,9 @@ def compare_variable_distribution(
 
     Returns:
     -------
-    None
-        This function generates and displays a plot but does not return a value.
+    Plot
+        The figure and axes objects for further customization or saving.
+
     """
     if variable not in df1.columns or variable not in df2.columns:
         raise ValueError(f"Variable '{variable}' not found in both DataFrames.")
@@ -87,7 +88,8 @@ def compare_variable_distribution(
     plt.ylabel(variable)
     plt.xticks(rotation=0)
     plt.tight_layout()
-    plt.show()
+
+    return plt
 
 
 def plot_bar(
@@ -103,7 +105,7 @@ def plot_bar(
     legend_title: str | None = None,
     rotate_xticks: int | None = 45,
     show_values: bool = False,
-) -> None:
+) -> tuple:
     """Create a customizable bar plot with consistent styling.
 
     Parameters
@@ -135,40 +137,35 @@ def plot_bar(
 
     Returns:
     -------
-    None
-        Displays the bar plot.
+    Plot
+        Return the plot.
     """
-    plt.figure(figsize=figsize)
-    ax = sns.barplot(data=data, x=x, y=y, hue=hue, palette=palette)
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.barplot(data=data, x=x, y=y, hue=hue, palette=palette, ax=ax)
 
-    # Add title and labels
     ax.set_title(title or "", fontsize=14)
     ax.set_xlabel(xlabel or x, fontsize=12)
     ax.set_ylabel(ylabel or y, fontsize=12)
 
-    # Rotate x-axis labels if needed
     if rotate_xticks:
-        plt.xticks(rotation=rotate_xticks)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=rotate_xticks)
 
-    # Add gridlines
-    plt.grid(axis="y", linestyle="--", alpha=0.7)
+    ax.grid(axis="y", linestyle="--", alpha=0.7)
 
-    # Add legend if applicable
     if hue:
-        plt.legend(
+        ax.legend(
             title=legend_title or hue,
             bbox_to_anchor=(1.05, 1),
             loc="upper left",
             frameon=False,
         )
 
-    # Optionally show values on bars
     if show_values:
         for container in ax.containers:
             ax.bar_label(container, fmt="%.0f", fontsize=9, padding=3)
 
-    plt.tight_layout()
-    plt.show()
+    fig.tight_layout()
+    return fig, ax
 
 
 def plot_building_energy_deltas(
@@ -181,7 +178,7 @@ def plot_building_energy_deltas(
     figsize: tuple[float, float] = (18, 6),
     alpha_buildings: float = 0.3,
     linewidth_buildings: float = 1,
-) -> None:
+) -> tuple:
     """Generate side-by-side plots for building-level energy delta trends for any metric.
 
     Includes:
@@ -199,6 +196,12 @@ def plot_building_energy_deltas(
         Column name for building identifier used when melting.
     marker_year : int, default=2019
         Year to highlight with a vertical line (e.g., placards introduction).
+
+
+    Returns:
+    -------
+    Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
+        The figure and axes objects for further customization or saving.
     """
     pivot_df = pivot_df.reindex(sorted(pivot_df.columns), axis=1)
     subset_years = [year for year in pivot_df.columns if start_year <= year <= end_year]
@@ -303,7 +306,7 @@ def plot_building_energy_deltas(
     )
 
     plt.tight_layout()
-    plt.show()
+    return fig, axes
 
 
 # ----------Line graphs-----------
@@ -311,7 +314,7 @@ def plot_building_energy_deltas(
 
 def plot_trend_by_year(
     df: pd.DataFrame, numeric_cols: list[str], agg: str = "median"
-) -> None:
+) -> plt.figure:
     """Plot yearly trends (mean or median) for numeric variables.
 
     Parameters
@@ -322,6 +325,12 @@ def plot_trend_by_year(
         Columns to plot trends for.
     agg : str
         Aggregation function to use ('mean' or 'median').
+
+    Returns:
+    -------
+    Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
+        The figure and axes objects for further customization or saving.
+
     """
     year_col = "Data Year" if "Data Year" in df.columns else "Data_Year"
 
@@ -341,7 +350,7 @@ def plot_trend_by_year(
         plt.ylabel(col)
         plt.grid(True, linestyle="--", alpha=0.6)
         plt.tight_layout()
-        plt.show()
+        return plt
 
 
 def plot_mean_cumulative_changes(
@@ -350,11 +359,16 @@ def plot_mean_cumulative_changes(
     end_year: int | None = None,
     marker_year: int = 2019,
     title_prefix: str = "Cumulative % Change from Baseline",
-) -> None:
+) -> plt.figure:
     """Plot average cumulative % change from baseline for multiple energy metrics.
 
     metrics_dict : dict
         { 'Metric Name': DataFrame_of_percent_changes }
+
+    Returns:
+    -------
+    Plot
+        The figure and axes objects for further customization or saving.
     """
     plt.figure(figsize=(10, 6))
 
@@ -382,48 +396,7 @@ def plot_mean_cumulative_changes(
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
-    plt.show()
-
-
-# ----------Histograms (data exploration)-----------
-
-
-def plot_facet_histograms_by_year(
-    df: pd.DataFrame, variable: str, bins: int = 40
-) -> None:
-    """Faceted histograms with shared x/y axes to maintain consistent scale."""
-    year_col = "Data Year" if "Data Year" in df.columns else "Data_Year"
-    if variable not in df.columns:
-        logging.warning(f"'{variable}' column not found.")
-        return
-
-    x_min, x_max = df[variable].min(), df[variable].max()
-
-    g = sns.FacetGrid(
-        df,
-        col=year_col,
-        col_wrap=4,
-        sharex=True,
-        sharey=True,
-        height=3.5,
-    )
-    g.map_dataframe(sns.histplot, x=variable, bins=bins, color="skyblue")
-    g.set_titles(col_template="Year: {col_name}")
-    g.set_axis_labels(variable, "Count")
-    g.set(xlim=(x_min, x_max))
-    g.fig.subplots_adjust(top=0.9)
-    g.fig.suptitle(
-        f"Distribution of {variable} by Year (Consistent Scale)", fontsize=14
-    )
-    plt.show()
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-    )
-    plot_facet_histograms_by_year()
+    return plt
 
 
 # ----------Spatial Mapping-----------
@@ -655,3 +628,10 @@ def plot_metric_change_map(
         charts.append(base + overlay)
 
     return charts
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    )

@@ -31,17 +31,22 @@ def find_src_root(start_path: Path) -> Path:
 
 def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
-    src_root = find_src_root(Path.cwd().resolve())
-    path = src_root / "data" / "chicago_energy_benchmarking"
-    logging.debug(f"Path: {path}")
+    path = Path("/project/data") / "chicago_energy_benchmarking"
 
-    load_dfs = []
-    for file in path.rglob("*.csv"):
-        logging.debug(f"Reading: {file}")
-        load_dfs.append(pd.read_csv(file))
+    if not path.exists():
+        raise FileNotFoundError(f"Data directory not found: {path}")
+
+    # Get all CSVs in this directory (non-recursive)
+    csv_files = list(path.glob("*.csv"))
+    if not csv_files:
+        raise FileNotFoundError(f"No CSV files found in {path}")
+
+    # Load and concatenate all CSVs
+    load_dfs = [pd.read_csv(file) for file in csv_files]
     full_df = pd.concat(load_dfs, ignore_index=True)
     full_df = full_df.sort_values(by="Data Year")
 
+    # Define columns
     str_cols = [
         "Property Name",
         "ZIP Code",
@@ -69,7 +74,11 @@ def load_data() -> pd.DataFrame:
         "Water Use (kGal)",
     ]
 
+    # Convert string columns to lowercase
     full_df[str_cols] = full_df[str_cols].astype(str).apply(lambda col: col.str.lower())
+
+    # Clean numeric columns (only if present)
+    from data_utils import clean_numeric  # assuming you already have this helper
 
     full_df = full_df.assign(
         **{
@@ -82,12 +91,8 @@ def load_data() -> pd.DataFrame:
     return full_df
 
 
-# Load in energy data to be used as default value for functions
-energy_data = load_data()
-
-
 def concurrent_buildings(
-    df: pd.DataFrame = energy_data,
+    input_df: pd.DataFrame = None,
     start_year: int = 2016,
     end_year: int = 2023,
     id_col: str = "ID",
@@ -120,10 +125,15 @@ def concurrent_buildings(
         A filtered DataFrame containing only records of buildings that have
         data submitted for all years in the specified range, restricted to data within that range.
     """
+    if not input_df:
+        input_df = load_data()
+
     required_years = set(range(start_year, end_year + 1))
 
     # Restrict to years within the desired range first
-    df_in_range = df[(df[year_col] >= start_year) & (df[year_col] <= end_year)]
+    df_in_range = input_df[
+        (input_df[year_col] >= start_year) & (input_df[year_col] <= end_year)
+    ]
 
     # Optionally filter by building type if list is provided
     if building_type:
@@ -152,7 +162,7 @@ def concurrent_buildings(
 
 def pivot_energy_metric(
     metric_col: str,
-    df: pd.DataFrame = energy_data,
+    input_df: pd.DataFrame = None,
     start_year: int = 2016,
     end_year: int = 2023,
     id_col: str = "ID",
@@ -182,8 +192,11 @@ def pivot_energy_metric(
         containing the selected metric values. Rows with any null values
         in the specified year range are dropped.
     """
+    if input_df is None:
+        input_df = load_data()
+
     # Create pivot table
-    pivot_df = df.pivot_table(index=id_col, columns=year_col, values=metric_col)
+    pivot_df = input_df.pivot_table(index=id_col, columns=year_col, values=metric_col)
 
     # Identify the columns corresponding to the specified year range
     cols_to_check = [

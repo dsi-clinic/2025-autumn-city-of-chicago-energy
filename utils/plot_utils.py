@@ -10,7 +10,6 @@ It includes reusable functions for comparing variable distributions before and a
 
 import logging
 import re
-from pathlib import Path
 
 import altair as alt
 import matplotlib.pyplot as plt
@@ -471,14 +470,14 @@ def plot_choropleth(
 
 
 def save_all_metric_maps(
-    dff: pd.DataFrame, geojson: dict, metrics: list[str], output_dir: Path
-) -> None:
-    """Generate and save choropleth grids for all specified metrics.
+    dff: pd.DataFrame, geojson: dict, metrics: list[str]
+) -> alt.Chart:
+    """Generate choropleth grids for all specified metrics and return the combined chart.
 
     Each metric produces one combined grid with an all-year average map and yearly maps.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
     grid_cols = 4
+    combined_charts = {}
 
     for metric in metrics:
         safe_metric = re.sub(r"[^A-Za-z0-9_]", "_", metric).strip("_")
@@ -489,7 +488,7 @@ def save_all_metric_maps(
             charts.append(plot_choropleth(geojson, agg, metric, int(year)))
 
         grid = []
-        for i in range(0, grid_cols * 3, grid_cols):
+        for i in range(0, len(charts), grid_cols):
             row = charts[i : i + grid_cols]
             while len(row) < grid_cols:
                 row.append(
@@ -502,8 +501,12 @@ def save_all_metric_maps(
             title=f"{metric} by Neighborhood (All Years + Yearly Breakdown)"
         ).configure_title(fontSize=13)
 
-        file_path = output_dir / f"{safe_metric}_grid.png"
-        combined.save(str(file_path), scale_factor=2)
+        combined_charts[safe_metric] = combined
+
+    # If only one metric, return the chart directly
+    if len(metrics) == 1:
+        return combined_charts[safe_metric]
+    return combined_charts
 
 
 def plot_building_count_map(

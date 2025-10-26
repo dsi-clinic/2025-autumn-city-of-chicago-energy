@@ -27,7 +27,7 @@ def compare_variable_distribution(
     label1: str = "Before 2019",
     label2: str = "After 2019",
     log_scale: bool = False,
-) -> plt.figure:
+) -> tuple:
     """Visualize the distribution of a numeric variable across two DataFrames using boxplots + stripplots.
 
     Parameters
@@ -47,7 +47,7 @@ def compare_variable_distribution(
 
     Returns:
     -------
-    Plot
+    Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
         The figure and axes objects for further customization or saving.
 
     """
@@ -65,7 +65,7 @@ def compare_variable_distribution(
 
     # Plot
     sns.set(style="whitegrid", palette="muted", font_scale=1.2)
-    plt.figure(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(8, 6))
 
     ax = sns.boxplot(
         data=combined_df, x="Period", y=variable, showfliers=False, width=0.5
@@ -88,7 +88,7 @@ def compare_variable_distribution(
     plt.xticks(rotation=0)
     plt.tight_layout()
 
-    return plt
+    return fig, ax
 
 
 def plot_bar(
@@ -136,8 +136,8 @@ def plot_bar(
 
     Returns:
     -------
-    Plot
-        Return the plot.
+    Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
+        The figure and axes objects for further customization or saving.
     """
     fig, ax = plt.subplots(figsize=figsize)
     sns.barplot(data=data, x=x, y=y, hue=hue, palette=palette, ax=ax)
@@ -313,7 +313,7 @@ def plot_building_energy_deltas(
 
 def plot_trend_by_year(
     df: pd.DataFrame, numeric_cols: list[str], agg: str = "median"
-) -> plt.figure:
+) -> tuple:
     """Plot yearly trends (mean or median) for numeric variables.
 
     Parameters
@@ -337,7 +337,7 @@ def plot_trend_by_year(
         if col not in df.columns:
             continue
 
-        plt.figure(figsize=(8, 5))
+        fig, ax = plt.subplots(figsize=(8, 5))
         if agg == "median":
             trend = df.groupby(year_col)[col].median()
         else:
@@ -349,7 +349,8 @@ def plot_trend_by_year(
         plt.ylabel(col)
         plt.grid(True, linestyle="--", alpha=0.6)
         plt.tight_layout()
-        return plt
+
+        return fig, ax
 
 
 def plot_mean_cumulative_changes(
@@ -358,7 +359,7 @@ def plot_mean_cumulative_changes(
     end_year: int | None = None,
     marker_year: int = 2019,
     title_prefix: str = "Cumulative % Change from Baseline",
-) -> plt.figure:
+) -> tuple:
     """Plot average cumulative % change from baseline for multiple energy metrics.
 
     metrics_dict : dict
@@ -366,10 +367,10 @@ def plot_mean_cumulative_changes(
 
     Returns:
     -------
-    Plot
+    Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
         The figure and axes objects for further customization or saving.
     """
-    plt.figure(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(10, 6))
 
     for label, metric_df in metrics_dict.items():
         metric_df = metric_df.copy()
@@ -395,7 +396,7 @@ def plot_mean_cumulative_changes(
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
-    return plt
+    return fig, ax
 
 
 # ----------Spatial Mapping-----------

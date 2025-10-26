@@ -21,17 +21,9 @@ def clean_numeric(series: pd.Series) -> pd.Series:
     )
 
 
-def find_src_root(start_path: Path) -> Path:
-    """Finds src path in environment"""
-    for parent in [start_path] + list(start_path.parents):
-        if parent.name == "src":
-            return parent
-    raise FileNotFoundError("No 'src' directory found in path hierarchy.")
-
-
 def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
-    path = Path("/project/data") / "chicago_energy_benchmarking"
+    path = Path("project") / "data" / "chicago_energy_benchmarking"
 
     if not path.exists():
         raise FileNotFoundError(f"Data directory not found: {path}")
@@ -76,9 +68,6 @@ def load_data() -> pd.DataFrame:
 
     # Convert string columns to lowercase
     full_df[str_cols] = full_df[str_cols].astype(str).apply(lambda col: col.str.lower())
-
-    # Clean numeric columns (only if present)
-    from data_utils import clean_numeric  # assuming you already have this helper
 
     full_df = full_df.assign(
         **{

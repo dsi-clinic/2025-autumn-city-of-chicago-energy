@@ -1,4 +1,4 @@
-"""stats_utils.py 
+"""stats_utils.py
 
 Utilities for statistical analyses.
 

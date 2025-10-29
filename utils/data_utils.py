@@ -222,5 +222,64 @@ def load_neighborhood_geojson(geojson_path: Path) -> dict:
     return geojson
 
 
+def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure each building (ID) has a consistent Primary Property Type.
+
+    Rules:
+    1. If a building has only one valid (non-'nan'/non-empty) type, fill all with that.
+    2. If a building has any combination of 'multifamily housing', 'residential', or 'nan',
+       set all to 'multifamily housing'.
+    3. If a building only has repeated instances of 'multifamily housing', keep that.
+    4. If a building has any combination of 'senior care community' or 'senior living community',
+       set all to 'senior care community'.
+    """
+    df_copy = energy_df.copy()
+
+    missing_vals = {"nan", "none", ""}
+
+    # Map each building ID to its valid property types
+    type_map = df_copy.groupby("ID")["Primary Property Type"].apply(
+        lambda x: [
+            v for v in x if pd.notna(v) and str(v).strip().lower() not in missing_vals
+        ]
+    )
+
+    id_to_type = {}
+
+    for bid, types in type_map.items():
+        lower_types = {t.strip().lower() for t in types}
+
+        # Case 4: senior care / senior living -> unify as 'senior care community'
+        if lower_types & {"senior care community", "senior living community"}:
+            id_to_type[bid] = "senior care community"
+
+        # Case 1: Only one valid type
+        elif len(lower_types) == 1:
+            id_to_type[bid] = list(lower_types)[0]
+
+        # Case 2: multifamily + residential/nan/duplicates -> multifamily housing
+        elif "multifamily housing" in lower_types and (
+            "residential" in lower_types or "nan" in lower_types or "" in lower_types
+        ):
+            id_to_type[bid] = "multifamily housing"
+
+        # Case 3: redundant duplicates like ['multifamily housing', 'multifamily housing']
+        elif lower_types == {"multifamily housing"}:
+            id_to_type[bid] = "multifamily housing"
+
+    # Apply replacements
+    def replace_type(row: pd.Series) -> str:
+        val = str(row["Primary Property Type"]).strip().lower()
+        if val in missing_vals or pd.isna(row["Primary Property Type"]):
+            return id_to_type.get(row["ID"], row["Primary Property Type"])
+        if row["ID"] in id_to_type:
+            return id_to_type[row["ID"]]
+        return row["Primary Property Type"]
+
+    df_copy["Primary Property Type"] = df_copy.apply(replace_type, axis=1)
+
+    return df_copy
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

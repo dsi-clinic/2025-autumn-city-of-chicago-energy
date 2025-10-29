@@ -114,7 +114,7 @@ def concurrent_buildings(
         A filtered DataFrame containing only records of buildings that have
         data submitted for all years in the specified range, restricted to data within that range.
     """
-    if not input_df:
+    if input_df is None:
         input_df = load_data()
 
     required_years = set(range(start_year, end_year + 1))

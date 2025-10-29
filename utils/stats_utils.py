@@ -1,7 +1,7 @@
 """stats_utils.py
 
-Utilities for statistical analyses.
-
+Provides functions to generate descriptive statistics and missing-value summaries
+for the Chicago Energy Benchmarking dataset.
 """
 
 import pandas as pd

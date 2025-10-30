@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from utils.data_loader import loading_data
+from utils.data_utils import load_data
 
-main_dataframe = loading_data()
+main_dataframe = load_data()
 
 st.set_page_config(page_title="Chicago Energy Dashboard", layout="wide")
 

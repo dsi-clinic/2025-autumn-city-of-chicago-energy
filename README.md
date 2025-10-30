@@ -156,6 +156,7 @@ We use `docker` and `make` to run our code. There are three built-in `make` comm
 
 * `make build-only`: This will build the image only. It is useful for testing and making changes to the Dockerfile.
 * `make run-notebooks`: This will run a Jupyter server, which also mounts the current directory into `/program`.
+    * You may use notebooks within VSCode by copying the local URL of the Jupyter Server and selecting it as your kernel. (i.e. `http://localhost:8888/lab?token=abcdefg`)
 * `make run-interactive`: This will create a container (with the current directory mounted as `/program`) and load an interactive session. 
 
 The file `Makefile` contains details about the specific commands that are run when calling each `make` target.

@@ -4,8 +4,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
 
+from utils.dashboard_utils import apply_page_config
 from utils.data_utils import load_data
 from utils.plot_utils import plot_trend_by_year
+
+apply_page_config()
 
 st.title("Simple Dashboard")
 

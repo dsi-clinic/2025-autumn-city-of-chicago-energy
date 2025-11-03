@@ -103,20 +103,31 @@ year_options = ["Average (All Years)"] + sorted(
     [int(year) for year in available_years], reverse=True
 )
 
-with st.container():
-    col1, col2 = st.columns(2)
+# with st.container():
+#     col1, col2 = st.columns(2)
 
-    with col1:
-        map_select = st.selectbox("Choose metric for map:", variables, key="map_metric")
-    with col2:
-        year_select = st.selectbox("Choose year:", year_options, key="year1")
-        year_arg = None if year_select == "Average (All Years)" else int(year_select)
+#     with col1:
+#         map_select = st.selectbox("Choose metric for map:", variables, key="map_metric")
+#     with col2:
+#         year_select = st.selectbox("Choose year:", year_options, key="year1")
+#         year_arg = None if year_select == "Average (All Years)" else int(year_select)
 
-agg_energy_data = {
-    metric: aggregate_metric(energy_data, metric) for metric in variables
-}
+# agg_energy_data = {
+#     metric: aggregate_metric(energy_data, metric) for metric in variables
+# }
 
-# Plot and display
-map = plot_choropleth(geojson_data, agg_energy_data[map_select], map_select, year_arg)
-st.altair_chart(map, width="stretch")
+# # Plot and display
+# map = plot_choropleth(geojson_data, agg_energy_data[map_select], map_select, year_arg)
+# st.altair_chart(map, width="stretch")
+
+
+# Dropdown for metric selection
+map_select = st.selectbox("Choose metric for map:", variables, key="map_metric")
+
+# Use precomputed, cached chart
+map_chart = all_year_charts[map_select]
+
+# Display the chart
+st.altair_chart(map_chart, width="stretch")
+
 st.write(f"Render time: {time.time() - start:.2f} seconds")

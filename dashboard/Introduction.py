@@ -5,11 +5,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from utils.dashboard_utils import apply_page_config
 from utils.data_utils import load_data
 
 main_dataframe = load_data()
 
-st.set_page_config(page_title="Chicago Energy Dashboard", layout="wide")
+apply_page_config()
 
 st.title("City of Chicago - Energy Dashboard")
 st.subheader("Mentors & Team")

@@ -23,7 +23,7 @@ def clean_numeric(series: pd.Series) -> pd.Series:
 
 def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
-    path = Path("/project/src") / "data" / "chicago_energy_benchmarking"
+    path = Path("/project") / "data" / "chicago_energy_benchmarking"
 
     if not path.exists():
         raise FileNotFoundError(f"Data directory not found: {path}")

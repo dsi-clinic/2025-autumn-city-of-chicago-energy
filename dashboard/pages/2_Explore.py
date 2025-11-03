@@ -2,15 +2,18 @@
 
 import time
 
-import altair as alt
 import matplotlib.pyplot as plt
-import pandas as pd
 import streamlit as st
 
-from utils.dashboard_utils import apply_page_config
-from utils.data_utils import concurrent_buildings, load_neighborhood_geojson
+from utils.dashboard_utils import (
+    apply_page_config,
+    build_all_aggregates,
+    build_all_year_charts,
+    get_energy_data,
+    get_geojson,
+)
 from utils.plot_utils import (
-    aggregate_metric,
+    plot_building_count_map,
     plot_choropleth,
     plot_trend_by_year,
 )
@@ -22,20 +25,6 @@ st.title("Exploratory Dashboard")
 
 
 # -------------------- Load Data --------------------
-@st.cache_data
-def get_energy_data() -> pd.DataFrame:
-    """Caching main data"""
-    return concurrent_buildings()
-
-
-@st.cache_data
-def get_geojson() -> dict:
-    """Caching geojson data"""
-    return load_neighborhood_geojson(
-        "/project/src/data/chicago_geo/neighborhood_chi.geojson"
-    )
-
-
 energy_data = get_energy_data()
 geojson_data = get_geojson()
 
@@ -54,22 +43,9 @@ variables = [
     "GHG Intensity (kg CO2e/sq ft)",
 ]
 
-
-# -------------------- Precompute All-Year Charts --------------------
-@st.cache_data
-def build_all_year_charts(
-    df: pd.DataFrame, geojson: dict, metrics: list[str]
-) -> dict[str, alt.Chart]:
-    """Caching altair graphs of each metric in variable list"""
-    charts = {}
-    for metric in metrics:
-        agg = aggregate_metric(df, metric)
-        chart = plot_choropleth(geojson, agg, metric, year=None)
-        charts[metric] = chart
-    return charts
-
-
-all_year_charts = build_all_year_charts(energy_data, geojson_data, variables)
+# # -------------------- Precompute All-Year Charts --------------------
+agg_energy_data = build_all_aggregates(energy_data, variables)
+all_year_charts = build_all_year_charts(agg_energy_data, geojson_data)
 
 # -------------------- Trend Plots --------------------
 col1, col2 = st.columns(2)
@@ -103,31 +79,39 @@ year_options = ["Average (All Years)"] + sorted(
     [int(year) for year in available_years], reverse=True
 )
 
-# with st.container():
-#     col1, col2 = st.columns(2)
+with st.container():
+    VarCol, BuildCol = st.columns(2)
 
-#     with col1:
-#         map_select = st.selectbox("Choose metric for map:", variables, key="map_metric")
-#     with col2:
-#         year_select = st.selectbox("Choose year:", year_options, key="year1")
-#         year_arg = None if year_select == "Average (All Years)" else int(year_select)
+    with VarCol:
+        with st.container():
+            col1, col2 = st.columns(2)
 
-# agg_energy_data = {
-#     metric: aggregate_metric(energy_data, metric) for metric in variables
-# }
+            with col1:
+                map_select = st.selectbox(
+                    "Choose metric for map:", variables, key="map_metric"
+                )
+            with col2:
+                year_select = st.selectbox("Choose year:", year_options, key="year1")
+                year_arg = (
+                    None if year_select == "Average (All Years)" else int(year_select)
+                )
 
-# # Plot and display
-# map = plot_choropleth(geojson_data, agg_energy_data[map_select], map_select, year_arg)
-# st.altair_chart(map, width="stretch")
+        # Use cached chart if year is None, otherwise recompute chart using cached aggregation
+        if year_arg is None:
+            map_chart = all_year_charts[map_select]
+        else:
+            agg = agg_energy_data[map_select]  # reuse cached aggregation
+            map_chart = plot_choropleth(geojson_data, agg, map_select, year_arg)
+            st.write("making new graph")
 
+        st.altair_chart(map_chart, width="stretch")
 
-# Dropdown for metric selection
-map_select = st.selectbox("Choose metric for map:", variables, key="map_metric")
+    with BuildCol:
+        energy_data["Community Area"] = (
+            energy_data["Community Area"].astype(str).str.strip().str.title()
+        )
+        map_build = plot_building_count_map(geojson_data, energy_data)
 
-# Use precomputed, cached chart
-map_chart = all_year_charts[map_select]
-
-# Display the chart
-st.altair_chart(map_chart, width="stretch")
+        st.altair_chart(map_build, width="stretch")
 
 st.write(f"Render time: {time.time() - start:.2f} seconds")

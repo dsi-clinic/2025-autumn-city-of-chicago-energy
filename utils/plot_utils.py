@@ -10,6 +10,7 @@ It includes reusable functions for comparing variable distributions before and a
 
 import logging
 import re
+from collections.abc import Callable, Iterable
 
 import altair as alt
 import matplotlib.pyplot as plt
@@ -399,6 +400,365 @@ def plot_mean_cumulative_changes(
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
     return fig, ax
+
+
+def plot_metric_by_property(
+    df: pd.DataFrame,
+    metric_col: str,
+    agg_func: Callable = pd.Series.median,
+    property_col: str = "Primary Property Type",
+    year_col: str = "Data Year",
+    marker_year: int = 2019,
+    width: int = 600,
+    height: int = 400,
+) -> alt.Chart:
+    """Plot an aggregated energy metric (mean, median, etc.) over time by property type, with an optional policy marker (e.g. 2019 placard introduction).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing energy metrics, property type, and year columns.
+    metric_col : str
+        Column name for the energy metric to visualize (e.g., 'Site EUI (kBtu/sq ft)').
+    agg_func : Callable, optional
+        Aggregation function (e.g., pd.Series.mean, pd.Series.median). Defaults to median.
+    property_col : str, optional
+        Column name for property type. Defaults to 'Primary Property Type'.
+    year_col : str, optional
+        Column name for data year. Defaults to 'Data Year'.
+    marker_year : int, optional
+        Year to highlight with a vertical marker (default: 2019).
+    width : int, optional
+        Chart width (default: 600).
+    height : int, optional
+        Chart height (default: 400).
+
+    Returns:
+    -------
+    alt.Chart
+        Interactive Altair line chart showing the aggregated metric trends by property type.
+    """
+    # --- Aggregate data by year and property type ---
+    grouped = (
+        df.groupby([year_col, property_col], as_index=False)
+        .agg({metric_col: agg_func})
+        .rename(columns={metric_col: "Aggregated_Metric"})
+    )
+
+    # Determine the name of the aggregation function for chart title
+    agg_name = getattr(agg_func, "__name__", str(agg_func))
+
+    # --- Build main line chart ---
+    line = (
+        alt.Chart(grouped)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X(f"{year_col}:O", title="Year", sort="ascending"),
+            y=alt.Y("Aggregated_Metric:Q", title=f"{agg_name.title()} {metric_col}"),
+            color=alt.Color(f"{property_col}:N", title="Property Type"),
+            tooltip=[
+                alt.Tooltip(property_col, title="Property Type"),
+                alt.Tooltip(year_col, title="Year"),
+                alt.Tooltip(
+                    "Aggregated_Metric:Q",
+                    format=".2f",
+                    title=f"{agg_name.title()} {metric_col}",
+                ),
+            ],
+        )
+    )
+
+    # --- Marker line for policy year ---
+    marker = (
+        alt.Chart(pd.DataFrame({year_col: [marker_year]}))
+        .mark_rule(color="red", strokeDash=[4, 4], size=2)
+        .encode(x=f"{year_col}:O")
+    )
+
+    # --- Annotation label ---
+    annotation = (
+        alt.Chart(
+            pd.DataFrame(
+                {
+                    year_col: [marker_year],
+                    "label": ["Chicago Energy Placard Introduced"],
+                }
+            )
+        )
+        .mark_text(align="left", baseline="bottom", dx=5, dy=-5, color="red")
+        .encode(x=f"{year_col}:O", text="label:N")
+    )
+
+    # --- Combine all layers ---
+    chart = (
+        (line + marker + annotation)
+        .properties(
+            width=width,
+            height=height,
+            title=f"{agg_name.title()} {metric_col} by Property Type ({df[year_col].min()}–{df[year_col].max()})",
+        )
+        .interactive()
+    )
+
+    return chart
+
+
+def plot_delta_property_chart(
+    df: pd.DataFrame,
+    metric_col: str = "Site EUI (kBtu/sq ft)",
+    property_col: str = "Primary Property Type",
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+    top_types: Iterable[str] | None = None,
+    marker_year: int = 2019,
+    width: int = 700,
+    height: int = 400,
+) -> alt.Chart:
+    """Clean data, compute year-over-year change per building, and visualize Δ (year-to-year change) by property type with median trend and 2019 marker.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Raw energy benchmarking dataframe.
+    metric_col : str, default="Site EUI (kBtu/sq ft)"
+        Energy metric column to compute deltas from.
+    property_col : str, default="Primary Property Type"
+        Column for property type.
+    id_col : str, default="ID"
+        Unique building identifier column.
+    year_col : str, default="Data Year"
+        Column representing the reporting year.
+    top_types : iterable of str, optional
+        List of property types to show in the dropdown (if None, inferred from df).
+    marker_year : int, default=2019
+        Year to mark with a red dashed vertical line (Chicago Energy Placard introduction).
+    width : int, default=700
+        Chart width.
+    height : int, default=400
+        Chart height.
+
+    Returns:
+    -------
+    alt.Chart
+        Interactive Altair layered chart.
+    """
+    # Data preperation
+    cols = [id_col, year_col, property_col, metric_col]
+    df_clean = df[cols].dropna().copy()
+
+    df_clean[year_col] = df_clean[year_col].astype(int)
+    df_clean[id_col] = df_clean[id_col].astype(str)
+    df_clean[property_col] = df_clean[property_col].astype(str)
+    df_clean[metric_col] = pd.to_numeric(df_clean[metric_col], errors="coerce")
+    df_clean = df_clean.dropna(subset=[metric_col])
+
+    # Compute delta per building
+    df_delta = (
+        df_clean.sort_values([id_col, year_col])
+        .groupby(id_col, group_keys=False)
+        .apply(lambda g: g.assign(Delta=g[metric_col].diff()))
+        .dropna(subset=["Delta"])
+        .reset_index(drop=True)
+    )
+
+    if top_types is None:
+        top_types = sorted(df_clean[property_col].unique())
+
+    property_select = alt.selection_point(
+        fields=[property_col],
+        bind=alt.binding_select(options=list(top_types), name="Property Type: "),
+        empty="all",
+    )
+
+    # Base line chart (per-building)
+    delta_chart = (
+        alt.Chart(df_delta)
+        .mark_line(opacity=0.25)
+        .encode(
+            x=alt.X(f"{year_col}:O", title="Year", sort="ascending"),
+            y=alt.Y("Delta:Q", title=f"Δ {metric_col}"),
+            color=alt.Color(f"{property_col}:N", title="Property Type"),
+            detail=f"{id_col}:N",
+            tooltip=[
+                id_col,
+                property_col,
+                year_col,
+                alt.Tooltip("Delta:Q", format=".2f"),
+            ],
+        )
+        .transform_filter(property_select)
+        .add_params(property_select)
+        .properties(width=width, height=height)
+    )
+
+    # Marker for key policy year
+    marker_line = (
+        alt.Chart(pd.DataFrame({"x": [marker_year]}))
+        .mark_rule(color="red", strokeDash=[4, 4], size=2)
+        .encode(x="x:O")
+    )
+
+    # Median line for selected property type
+    median_line = (
+        alt.Chart(df_delta)
+        .transform_filter(property_select)
+        .transform_aggregate(
+            median_delta="median(Delta)",
+            groupby=[property_col, year_col],
+        )
+        .mark_line(size=4, opacity=1.0)
+        .encode(
+            x=alt.X(f"{year_col}:O", title="Year", sort="ascending"),
+            y=alt.Y("median_delta:Q", title=f"Median Δ {metric_col}"),
+            color=alt.Color(
+                f"{property_col}:N",
+                scale=alt.Scale(scheme="tableau10", domain=list(top_types)),
+                title="Property Type",
+            ),
+            tooltip=[
+                property_col,
+                year_col,
+                alt.Tooltip(
+                    "median_delta:Q", format=".2f", title=f"Median Δ {metric_col}"
+                ),
+            ],
+        )
+    )
+
+    final_chart = (
+        (delta_chart + median_line + marker_line)
+        .properties(
+            title=f"Year-over-Year Change in {metric_col} by Building (Δ from Previous Year)"
+        )
+        .interactive()
+    )
+
+    return final_chart
+
+
+# ----------Regression Line plots----------
+
+
+def plot_energy_persistence_chart(
+    df_lagged: pd.DataFrame,
+    property_col: str = "Primary Property Type",
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+    delta_col: str = "Delta",
+    delta_next_col: str = "Delta_next",
+    marker_year: int = 2019,
+    width: int = 350,
+    height: int = 350,
+) -> alt.Chart:
+    """Create an interactive scatter plot showing persistence of energy-use change (Δₜ → Δₜ₊₁) for each building, faceted by pre/post marker year.
+
+    Parameters
+    ----------
+    df_lagged : pd.DataFrame
+        DataFrame containing at least the columns:
+        [ID, Primary Property Type, Data Year, Delta, Delta_next].
+    property_col : str, default="Primary Property Type"
+        Column name for property type.
+    id_col : str, default="ID"
+        Unique building identifier column.
+    year_col : str, default="Data Year"
+        Column for reporting year.
+    delta_col : str, default="Delta"
+        Column for Δ Year N→N+1.
+    delta_next_col : str, default="Delta_next"
+        Column for Δ Year N+1→N+2.
+    marker_year : int, default=2019
+        Year dividing pre/post-placard comparison.
+    width : int, default=350
+        Width per facet.
+    height : int, default=350
+        Height per facet.
+
+    Returns:
+    -------
+    alt.Chart
+        Interactive Altair facet chart comparing persistence before/after marker year.
+    """
+    # Add pre/post marker period
+    df_lagged = df_lagged.copy()
+    df_lagged["Period"] = df_lagged[year_col].apply(
+        lambda y: f"Pre-{marker_year}" if y < marker_year else f"Post-{marker_year}"
+    )
+
+    # Dropdown selector for property type
+    type_select = alt.selection_point(
+        fields=[property_col],
+        bind=alt.binding_select(
+            options=sorted(df_lagged[property_col].unique().tolist()),
+            name="Property Type: ",
+        ),
+        empty="all",
+    )
+
+    # Scatter points
+    scatter = (
+        alt.Chart(df_lagged)
+        .mark_circle(size=55)
+        .encode(
+            x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
+            y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
+            color=alt.condition(
+                type_select, f"{property_col}:N", alt.value("lightgray")
+            ),
+            opacity=alt.condition(type_select, alt.value(0.8), alt.value(0.15)),
+            tooltip=[
+                id_col,
+                property_col,
+                year_col,
+                alt.Tooltip(f"{delta_col}:Q", format=".2f"),
+                alt.Tooltip(f"{delta_next_col}:Q", format=".2f"),
+            ],
+        )
+        .add_params(type_select)
+        .properties(width=width, height=height)
+    )
+
+    # Regression lines (one per property type × period)
+    reg_lines = (
+        alt.Chart(df_lagged)
+        .transform_regression(
+            delta_col, delta_next_col, groupby=[property_col, "Period"]
+        )
+        .mark_line(size=2)
+        .encode(
+            x=f"{delta_col}:Q",
+            y=f"{delta_next_col}:Q",
+            color=f"{property_col}:N",
+            opacity=alt.condition(type_select, alt.value(1), alt.value(0.2)),
+        )
+    )
+
+    # Combine scatter + regression, facet pre/post marker year
+    final_chart = (
+        (scatter + reg_lines)
+        .facet(
+            column=alt.Column(
+                "Period:N",
+                title=None,
+                sort=[f"Pre-{marker_year}", f"Post-{marker_year}"],
+            )
+        )
+        .properties(
+            title=alt.TitleParams(
+                text=[
+                    f"Energy-Change Persistence Before and After {marker_year} Placard Introduction",
+                    "Chicago Energy Benchmarking Buildings",
+                ],
+                subtitle=[
+                    "Each dot = one building’s year-to-year change; lines = trend within property type",
+                ],
+            )
+        )
+        .resolve_scale(color="independent")
+        .interactive()
+    )
+
+    return final_chart
 
 
 # ----------Spatial Mapping-----------

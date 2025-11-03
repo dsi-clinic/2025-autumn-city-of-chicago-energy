@@ -72,23 +72,31 @@ def build_all_year_charts(
 all_year_charts = build_all_year_charts(energy_data, geojson_data, variables)
 
 # -------------------- Trend Plots --------------------
-with st.container():
-    col1, col2 = st.columns(2)
+col1, col2 = st.columns(2)
 
-    with col1:
-        selected1 = st.selectbox("Choose first metric:", variables[1:], key="trend1")
-        plot_trend_by_year(energy_data, [selected1], "mean")
-        st.pyplot(plt)
+with col1:
+    selected1 = st.selectbox(
+        "Choose first metric:", variables[1:], key="trend_top_first"
+    )
+    plot_trend_by_year(energy_data, [selected1], "mean")
+    st.pyplot(plt)
 
-    with col2:
-        selected2 = st.selectbox("Choose second metric:", variables[1:], key="trend2")
-        plot_trend_by_year(energy_data, [selected2], "mean")
-        st.pyplot(plt)
+with col2:
+    # Set default index to the next available option, but keep all options
+    default_index = (variables[1:].index(selected1) + 1) % len(variables[1:])
+    selected2 = st.selectbox(
+        "Choose second metric:",
+        variables[1:],
+        index=default_index,
+        key="trend_top_second",
+    )
+    plot_trend_by_year(energy_data, [selected2], "mean")
+    st.pyplot(plt)
+
 
 st.divider()
-st.subheader("Maps")
-
 # -------------------- Map Selection --------------------
+st.subheader("Maps")
 
 available_years = sorted(energy_data["Data Year"].dropna().unique())
 year_options = ["Average (All Years)"] + sorted(

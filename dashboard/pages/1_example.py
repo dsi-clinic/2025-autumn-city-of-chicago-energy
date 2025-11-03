@@ -105,43 +105,6 @@ geojson_data = load_neighborhood_geojson(
     "/project/src/data/chicago_geo/neighborhood_chi.geojson"
 )
 
-variables = [
-    "ENERGY STAR Score",
-    "Electricity Use (kBtu)",
-    "Natural Gas Use (kBtu)",
-    "District Steam Use (kBtu)",
-    "District Chilled Water Use (kBtu)",
-    "All Other Fuel Use (kBtu)",
-    "Site EUI (kBtu/sq ft)",
-    "Source EUI (kBtu/sq ft)",
-    "Weather Normalized Site EUI (kBtu/sq ft)",
-    "Weather Normalized Source EUI (kBtu/sq ft)",
-    "Total GHG Emissions (Metric Tons CO2e)",
-    "GHG Intensity (kg CO2e/sq ft)",
-]
-
-
-with st.container():
-    col1, col2 = st.columns(2)
-
-    with col1:
-        selected1 = st.selectbox(
-            "Choose first metric:", variables[1:], key="trend_container_fir"
-        )
-        plot_trend_by_year(energy_data, [selected1], "mean")
-        st.pyplot(plt)
-
-    with col2:
-        selected2 = st.selectbox(
-            "Choose second metric:", variables[1:], key="trend_container_sec"
-        )
-        plot_trend_by_year(energy_data, [selected2], "mean")
-        st.pyplot(plt)
-
-
-st.divider()
-st.subheader("Maps")
-
 available_years = sorted(energy_data["Data Year"].dropna().unique())
 year_options = ["Average (All Years)"] + sorted(
     [int(year) for year in available_years], reverse=True

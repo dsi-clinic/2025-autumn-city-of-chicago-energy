@@ -2,15 +2,14 @@
 
 import time
 
-import matplotlib.pyplot as plt
 import streamlit as st
 
 from utils.dashboard_utils import (
     apply_page_config,
-    build_all_aggregates,
-    build_all_year_charts,
-    get_energy_data,
-    get_geojson,
+    cache_build_all_aggregates,
+    cache_build_all_year_charts,
+    cache_energy_data,
+    cache_geojson,
 )
 from utils.plot_utils import (
     plot_building_count_map,
@@ -23,10 +22,9 @@ apply_page_config()
 start = time.time()
 st.title("Exploratory Dashboard")
 
-
 # -------------------- Load Data --------------------
-energy_data = get_energy_data()
-geojson_data = get_geojson()
+energy_data = cache_energy_data()
+geojson_data = cache_geojson()
 
 variables = [
     "ENERGY STAR Score",
@@ -44,8 +42,8 @@ variables = [
 ]
 
 # # -------------------- Precompute All-Year Charts --------------------
-agg_energy_data = build_all_aggregates(energy_data, variables)
-all_year_charts = build_all_year_charts(agg_energy_data, geojson_data)
+agg_energy_data = cache_build_all_aggregates(energy_data, variables)
+all_year_charts = cache_build_all_year_charts(agg_energy_data, geojson_data)
 
 # -------------------- Trend Plots --------------------
 col1, col2 = st.columns(2)
@@ -54,11 +52,21 @@ with col1:
     selected1 = st.selectbox(
         "Choose first metric:", variables[1:], key="trend_top_first"
     )
-    plot_trend_by_year(energy_data, [selected1], "mean")
-    st.pyplot(plt)
+    fig1, ax1 = plot_trend_by_year(energy_data, [selected1], "mean")
+
+    # Styling: black background, white ticks
+    fig1.patch.set_facecolor("#0E1117")  # Figure background
+    ax1.set_facecolor("#0E1117")  # Axes background
+    ax1.tick_params(colors="white")  # Tick label color
+    ax1.title.set_color("white")  # Title color
+    ax1.xaxis.label.set_color("white")  # X-axis label color
+    ax1.yaxis.label.set_color("white")  # Y-axis label color
+    for spine in ax1.spines.values():  # Optional: white border
+        spine.set_color("white")
+
+    st.pyplot(fig1)
 
 with col2:
-    # Set default index to the next available option, but keep all options
     default_index = (variables[1:].index(selected1) + 1) % len(variables[1:])
     selected2 = st.selectbox(
         "Choose second metric:",
@@ -66,9 +74,19 @@ with col2:
         index=default_index,
         key="trend_top_second",
     )
-    plot_trend_by_year(energy_data, [selected2], "mean")
-    st.pyplot(plt)
+    fig2, ax2 = plot_trend_by_year(energy_data, [selected2], "mean")
 
+    # Styling: black background, white ticks
+    fig2.patch.set_facecolor("#0E1117")
+    ax2.set_facecolor("#0E1117")
+    ax2.tick_params(colors="white")
+    ax2.title.set_color("white")
+    ax2.xaxis.label.set_color("white")
+    ax2.yaxis.label.set_color("white")
+    for spine in ax2.spines.values():
+        spine.set_color("white")
+
+    st.pyplot(fig2)
 
 st.divider()
 # -------------------- Map Selection --------------------

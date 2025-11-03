@@ -21,13 +21,13 @@ def apply_page_config() -> None:
 
 
 @st.cache_data
-def get_energy_data() -> pd.DataFrame:
+def cache_energy_data() -> pd.DataFrame:
     """Caching main data"""
     return concurrent_buildings()
 
 
 @st.cache_data
-def get_geojson() -> dict:
+def cache_geojson() -> dict:
     """Caching geojson data"""
     return load_neighborhood_geojson(
         "/project/src/data/chicago_geo/neighborhood_chi.geojson"
@@ -35,7 +35,7 @@ def get_geojson() -> dict:
 
 
 @st.cache_data
-def build_all_aggregates(
+def cache_build_all_aggregates(
     df: pd.DataFrame, metrics: list[str]
 ) -> dict[str, pd.DataFrame]:
     """Cache aggregated metrics for all variables"""
@@ -43,7 +43,7 @@ def build_all_aggregates(
 
 
 @st.cache_data
-def build_all_year_charts(
+def cache_build_all_year_charts(
     agg_data: dict[str, pd.DataFrame], geojson: dict
 ) -> dict[str, alt.Chart]:
     """Cache Altair charts using pre-aggregated data"""

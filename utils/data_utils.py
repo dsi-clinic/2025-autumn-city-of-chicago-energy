@@ -1,10 +1,13 @@
 """Utilities for loading and cleaning Chicago Energy Benchmarking data from CSV files."""
 
+import json
 import logging
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def clean_numeric(series: pd.Series) -> pd.Series:
@@ -18,27 +21,24 @@ def clean_numeric(series: pd.Series) -> pd.Series:
     )
 
 
-def find_src_root(start_path: Path) -> Path:
-    """Finding the correct file path"""
-    for parent in [start_path] + list(start_path.parents):
-        if parent.name == "src":
-            return parent
-    raise FileNotFoundError("No 'src' directory found in path hierarchy.")
-
-
 def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
-    src_root = find_src_root(Path.cwd().resolve())
-    path = src_root / "data" / "chicago_energy_benchmarking"
-    logging.debug(f"Path: {path}")
+    path = Path("/project/src") / "data" / "chicago_energy_benchmarking"
 
-    load_dfs = []
-    for file in path.rglob("*.csv"):
-        logging.debug(f"Reading: {file}")
-        load_dfs.append(pd.read_csv(file))
+    if not path.exists():
+        raise FileNotFoundError(f"Data directory not found: {path}")
+
+    # Get all CSVs in this directory (non-recursive)
+    csv_files = list(path.glob("*.csv"))
+    if not csv_files:
+        raise FileNotFoundError(f"No CSV files found in {path}")
+
+    # Load and concatenate all CSVs
+    load_dfs = [pd.read_csv(file) for file in csv_files]
     full_df = pd.concat(load_dfs, ignore_index=True)
     full_df = full_df.sort_values(by="Data Year")
 
+    # Define columns
     str_cols = [
         "Property Name",
         "ZIP Code",
@@ -66,6 +66,7 @@ def load_data() -> pd.DataFrame:
         "Water Use (kGal)",
     ]
 
+    # Convert string columns to lowercase
     full_df[str_cols] = full_df[str_cols].astype(str).apply(lambda col: col.str.lower())
 
     full_df = full_df.assign(
@@ -79,17 +80,14 @@ def load_data() -> pd.DataFrame:
     return full_df
 
 
-energy_data = load_data()
-
-
 def concurrent_buildings(
-    df: pd.DataFrame = energy_data,
+    input_df: pd.DataFrame = None,
     start_year: int = 2016,
     end_year: int = 2023,
     id_col: str = "ID",
     year_col: str = "Data Year",
     building_type_col: str = "Primary Property Type",
-    building_type: list | None = None,
+    building_type: list = None,
 ) -> pd.DataFrame:
     """Filter buildings that have submitted data for all years in a specified range, keeping only records within that range.
 
@@ -116,10 +114,15 @@ def concurrent_buildings(
         A filtered DataFrame containing only records of buildings that have
         data submitted for all years in the specified range, restricted to data within that range.
     """
+    if not input_df:
+        input_df = load_data()
+
     required_years = set(range(start_year, end_year + 1))
 
     # Restrict to years within the desired range first
-    df_in_range = df[(df[year_col] >= start_year) & (df[year_col] <= end_year)]
+    df_in_range = input_df[
+        (input_df[year_col] >= start_year) & (input_df[year_col] <= end_year)
+    ]
 
     # Optionally filter by building type if list is provided
     if building_type:
@@ -144,6 +147,138 @@ def concurrent_buildings(
     filtered_df = filtered_df.drop_duplicates(subset=[id_col, year_col], keep="first")
 
     return filtered_df
+
+
+def pivot_energy_metric(
+    metric_col: str,
+    input_df: pd.DataFrame = None,
+    start_year: int = 2016,
+    end_year: int = 2023,
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+) -> pd.DataFrame:
+    """Create a pivot table showing an energy metric over time for each building, and drop rows with missing values in the specified year range.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The energy dataset containing building and year info.
+    metric_col : str
+        The column name of the metric to pivot (e.g., 'Site EUI (kBtu/sq ft)').
+    start_year : int, default = 2016
+        The first year in the building range to consider for dropping nulls.
+    end_year : int, default = 2023
+        The last year in the building range to consider for dropping nulls.
+    id_col : str, default="ID"
+        Column identifying unique buildings.
+    year_col : str, default="Data Year"
+        Column indicating the reporting year.
+
+    Returns:
+    -------
+    pd.DataFrame
+        Pivoted DataFrame with buildings as rows and years as columns,
+        containing the selected metric values. Rows with any null values
+        in the specified year range are dropped.
+    """
+    if input_df is None:
+        input_df = load_data()
+
+    # Create pivot table
+    pivot_df = input_df.pivot_table(index=id_col, columns=year_col, values=metric_col)
+
+    # Identify the columns corresponding to the specified year range
+    cols_to_check = [
+        year for year in pivot_df.columns if start_year <= year <= end_year
+    ]
+
+    # Drop rows with any nulls in the specified year range
+    pivot_df = pivot_df.dropna(subset=cols_to_check, how="any")
+
+    # Optional metadata
+    pivot_df.attrs["metric"] = metric_col
+    pivot_df.attrs["num_buildings"] = pivot_df.shape[0]
+    pivot_df.attrs["num_years"] = pivot_df.shape[1]
+    pivot_df.attrs["year_range"] = (start_year, end_year)
+
+    return pivot_df
+
+
+def load_neighborhood_geojson(geojson_path: Path) -> dict:
+    """Loads a neighborhood GeoJSON file.
+
+    Args:
+        geojson_path: Path to the neighborhood GeoJSON file.
+
+    Returns:
+        A Python dictionary parsed from the GeoJSON file.
+    """
+    geojson_path = Path(geojson_path)
+    logger.info(f"Loading GeoJSON from: {geojson_path.resolve()}")
+    with geojson_path.open() as f:
+        geojson = json.load(f)
+
+    logger.info(f"Loaded {len(geojson['features'])} features")
+    return geojson
+
+
+def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure each building (ID) has a consistent Primary Property Type.
+
+    Rules:
+    1. If a building has only one valid (non-'nan'/non-empty) type, fill all with that.
+    2. If a building has any combination of 'multifamily housing', 'residential', or 'nan',
+       set all to 'multifamily housing'.
+    3. If a building only has repeated instances of 'multifamily housing', keep that.
+    4. If a building has any combination of 'senior care community' or 'senior living community',
+       set all to 'senior care community'.
+    """
+    df_copy = energy_df.copy()
+
+    missing_vals = {"nan", "none", ""}
+
+    # Map each building ID to its valid property types
+    type_map = df_copy.groupby("ID")["Primary Property Type"].apply(
+        lambda x: [
+            v for v in x if pd.notna(v) and str(v).strip().lower() not in missing_vals
+        ]
+    )
+
+    id_to_type = {}
+
+    for bid, types in type_map.items():
+        lower_types = {t.strip().lower() for t in types}
+
+        # Case 4: senior care / senior living -> unify as 'senior care community'
+        if lower_types & {"senior care community", "senior living community"}:
+            id_to_type[bid] = "senior care community"
+
+        # Case 1: Only one valid type
+        elif len(lower_types) == 1:
+            id_to_type[bid] = list(lower_types)[0]
+
+        # Case 2: multifamily + residential/nan/duplicates -> multifamily housing
+        elif "multifamily housing" in lower_types and (
+            "residential" in lower_types or "nan" in lower_types or "" in lower_types
+        ):
+            id_to_type[bid] = "multifamily housing"
+
+        # Case 3: redundant duplicates like ['multifamily housing', 'multifamily housing']
+        elif lower_types == {"multifamily housing"}:
+            id_to_type[bid] = "multifamily housing"
+
+    # Apply replacements
+    def replace_type(row: pd.Series) -> str:
+        val = str(row["Primary Property Type"]).strip().lower()
+        if val in missing_vals or pd.isna(row["Primary Property Type"]):
+            return id_to_type.get(row["ID"], row["Primary Property Type"])
+        if row["ID"] in id_to_type:
+            return id_to_type[row["ID"]]
+        return row["Primary Property Type"]
+
+    df_copy["Primary Property Type"] = df_copy.apply(replace_type, axis=1)
+
+    return df_copy
 
 
 if __name__ == "__main__":

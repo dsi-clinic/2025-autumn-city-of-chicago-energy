@@ -12,6 +12,7 @@ from utils.dashboard_utils import (
     cache_geojson,
 )
 from utils.plot_utils import (
+    plot_bar,
     plot_building_count_map,
     plot_choropleth,
     plot_trend_by_year,
@@ -88,6 +89,31 @@ with col2:
 
     st.pyplot(fig2)
 
+
+fig10, ax10 = plot_bar(
+    data=energy_data,
+    x="Primary Property Type",
+    y="Site EUI (kBtu/sq ft)",
+    title="Average Site EUI by Neighborhood",
+    rotate_xticks=90,
+    show_values=True,
+)
+
+fig10.patch.set_facecolor("#0E1117")
+ax10.set_facecolor("#0E1117")
+ax10.tick_params(colors="white")
+ax10.title.set_color("white")
+ax10.xaxis.label.set_color("white")
+ax10.yaxis.label.set_color("white")
+for spine in ax10.spines.values():
+    spine.set_color("white")
+
+for container in ax10.containers:
+    ax10.bar_label(container, fmt="%.0f", fontsize=9, padding=3, color="white")
+
+st.pyplot(fig10)
+
+
 st.divider()
 # -------------------- Map Selection --------------------
 st.subheader("Maps")
@@ -125,6 +151,7 @@ with st.container():
         st.altair_chart(map_chart, width="stretch")
 
     with BuildCol:
+        # st.write("nothing")
         energy_data["Community Area"] = (
             energy_data["Community Area"].astype(str).str.strip().str.title()
         )

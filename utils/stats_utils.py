@@ -4,6 +4,7 @@ Provides functions to generate descriptive statistics and missing-value summarie
 for the Chicago Energy Benchmarking dataset.
 """
 
+import numpy as np
 import pandas as pd
 
 CORE_COLS = [
@@ -28,6 +29,64 @@ CORE_COLS = [
     "District Chilled Water Use (kBtu)",
     "All Other Fuel Use (kBtu)",
 ]
+
+POLICY_YEAR = 2019
+LOW_RATING_THRESHOLD = 2
+
+
+def prepare_did_data(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Clean and prepare data for Difference-in-Differences (DiD) regression.
+
+    Adds:
+        - Post: 1 if Data Year >= POLICY_YEAR, else 0
+        - LowRating: 1 if Chicago Energy Rating <= LOW_RATING_THRESHOLD, else 0
+        - ln_FloorArea: log of Gross Floor Area
+        - Interaction: Post × LowRating
+
+    Parameters
+    ----------
+    dataframe : pd.DataFrame
+        Raw Chicago Energy Benchmarking dataset.
+
+    Returns:
+    -------
+    pd.DataFrame
+        Prepared dataframe with treatment indicators, ready for DiD regression.
+    """
+    df_copy = dataframe.copy()
+
+    # Convert to numeric types
+    df_copy["Data Year"] = pd.to_numeric(df_copy["Data Year"], errors="coerce")
+    df_copy["Chicago Energy Rating"] = pd.to_numeric(
+        df_copy["Chicago Energy Rating"], errors="coerce"
+    )
+    df_copy["Gross Floor Area - Buildings (sq ft)"] = pd.to_numeric(
+        df_copy["Gross Floor Area - Buildings (sq ft)"], errors="coerce"
+    )
+
+    # Treatment and time variables
+    df_copy["Post"] = (df_copy["Data Year"] >= POLICY_YEAR).astype(int)
+    df_copy["LowRating"] = (
+        df_copy["Chicago Energy Rating"] <= LOW_RATING_THRESHOLD
+    ).astype(int)
+
+    # Log-transform floor area (avoid log(0))
+    df_copy["ln_FloorArea"] = np.log(
+        df_copy["Gross Floor Area - Buildings (sq ft)"].replace(0, np.nan)
+    )
+
+    # Interaction term
+    df_copy["Interaction"] = df_copy["Post"] * df_copy["LowRating"]
+
+    # Drop incomplete records
+    df_copy = df_copy.dropna(
+        subset=["Total GHG Emissions (Metric Tons CO2e)", "ln_FloorArea"]
+    )
+
+    print(f"[INFO] Prepared DiD dataset with {len(df_copy):,} observations.")
+    print(f"[INFO] Share treated buildings: {df_copy['LowRating'].mean():.2%}")
+
+    return df_copy
 
 
 def summarize_missing_by_year(df: pd.DataFrame) -> pd.DataFrame:

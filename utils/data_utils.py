@@ -283,3 +283,81 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
+
+def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
+    """
+    Summarize all relevant data for a given building ID.
+
+    - String columns: show unique values horizontally across all years.
+    - Numeric columns: show median values.
+    - Excludes redundant metadata columns like ID, Data Year, and Location.
+
+    Parameters
+    ----------
+    energy_df : pd.DataFrame
+        The full dataset.
+    building_id : str | int
+        The building ID to summarize.
+
+    Returns
+    -------
+    dict
+        A dictionary summary of all relevant building information.
+    """
+    if "ID" not in energy_df.columns:
+        raise ValueError("The DataFrame must contain an 'ID' column.")
+    
+    building_data = energy_df[energy_df["ID"] == building_id]
+    if building_data.empty:
+        print(f"No records found for building ID {building_id}")
+        return {}
+
+    summary = {"Building ID": building_id}
+
+    # Columns to skip
+    skip_cols = {"ID", "Data Year", "Location", "Latitude", "Longitude", "Row_ID"}
+
+    numeric_cols = [c for c in building_data.select_dtypes(include="number").columns if c not in skip_cols]
+    non_numeric_cols = [c for c in building_data.select_dtypes(exclude="number").columns if c not in skip_cols]
+
+    # Compute medians for numeric columns
+    for col in numeric_cols:
+        median_val = building_data[col].median(skipna=True)
+        summary[col] = round(median_val, 2) if pd.notna(median_val) else None
+
+    # Collect unique values for string columns
+    for col in non_numeric_cols:
+        unique_vals = sorted(
+            set(str(v).strip() for v in building_data[col].dropna().unique() if str(v).strip() != "")
+        )
+        summary[col] = unique_vals
+
+    # Optional pretty print
+    print("=" * 100)
+    print(f"BUILDING SUMMARY — ID: {building_id}")
+    print("=" * 100)
+
+    if "Data Year" in building_data.columns:
+        years = building_data["Data Year"].dropna().unique()
+        if len(years):
+            print(f"Years Recorded: {years.min()} → {years.max()}")
+        print("-" * 100)
+
+    # Display non-numeric summaries horizontally
+    for col in non_numeric_cols:
+        vals = summary[col]
+        if vals:
+            if len(vals) == 1:
+                print(f"{col}: {vals[0]}")
+            else:
+                joined = "; ".join(vals)
+                print(f"{col}: {joined}")
+    print("-" * 100)
+
+    # Display numeric summaries
+    for col in numeric_cols:
+        val = summary[col]
+        print(f"{col}: {val}")
+    print("=" * 100)
+
+    return summary

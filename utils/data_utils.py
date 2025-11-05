@@ -284,9 +284,9 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
+
 def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
-    """
-    Summarize all relevant data for a given building ID.
+    """Summarize all relevant data for a given building ID.
 
     - String columns: show unique values horizontally across all years.
     - Numeric columns: show median values.
@@ -299,14 +299,14 @@ def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
     building_id : str | int
         The building ID to summarize.
 
-    Returns
+    Returns:
     -------
     dict
         A dictionary summary of all relevant building information.
     """
     if "ID" not in energy_df.columns:
         raise ValueError("The DataFrame must contain an 'ID' column.")
-    
+
     building_data = energy_df[energy_df["ID"] == building_id]
     if building_data.empty:
         print(f"No records found for building ID {building_id}")
@@ -317,8 +317,16 @@ def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
     # Columns to skip
     skip_cols = {"ID", "Data Year", "Location", "Latitude", "Longitude", "Row_ID"}
 
-    numeric_cols = [c for c in building_data.select_dtypes(include="number").columns if c not in skip_cols]
-    non_numeric_cols = [c for c in building_data.select_dtypes(exclude="number").columns if c not in skip_cols]
+    numeric_cols = [
+        c
+        for c in building_data.select_dtypes(include="number").columns
+        if c not in skip_cols
+    ]
+    non_numeric_cols = [
+        c
+        for c in building_data.select_dtypes(exclude="number").columns
+        if c not in skip_cols
+    ]
 
     # Compute medians for numeric columns
     for col in numeric_cols:
@@ -328,7 +336,11 @@ def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
     # Collect unique values for string columns
     for col in non_numeric_cols:
         unique_vals = sorted(
-            set(str(v).strip() for v in building_data[col].dropna().unique() if str(v).strip() != "")
+            {
+                str(v).strip()
+                for v in building_data[col].dropna().unique()
+                if str(v).strip() != ""
+            }
         )
         summary[col] = unique_vals
 

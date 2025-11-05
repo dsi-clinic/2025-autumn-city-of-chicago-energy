@@ -281,5 +281,89 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
     return df_copy
 
 
+def covid_impact_category(
+    df: pd.DataFrame, property_col: str = "Primary Property Type", id_col: str = "ID"
+) -> pd.DataFrame:
+    """Assign each building a COVID impact category based on property type, without filtering by sample size.
+
+    Categories:
+        - Permanent: long-term reduction (remote work / downtown offices)
+        - Temporary/Rebounded: short-term dip & later rebound
+        - Stable/Increased: continuous or essential use
+        - Other: uncertain or mixed-use categories that don't clearly fit
+    """
+    energy_df = df.copy()
+
+    covid_mapping = {
+        # --- Permanent reductions ---
+        "office": "Permanent",
+        "financial office": "Permanent",
+        "bank branch": "Permanent",
+        "commercial": "Permanent",
+        # --- Temporary / Rebounded ---
+        "k-12 school": "Temporary/Rebounded",
+        "college/university": "Temporary/Rebounded",
+        "hotel": "Temporary/Rebounded",
+        "retail store": "Temporary/Rebounded",
+        "supermarket/grocery store": "Temporary/Rebounded",
+        "strip mall": "Temporary/Rebounded",
+        "mall": "Temporary/Rebounded",
+        "wholesale club/supercenter": "Temporary/Rebounded",
+        "movie theater": "Temporary/Rebounded",
+        "museum": "Temporary/Rebounded",
+        "performing arts": "Temporary/Rebounded",
+        "library": "Temporary/Rebounded",
+        "fitness center/health club/gym": "Temporary/Rebounded",
+        "indoor arena": "Temporary/Rebounded",
+        "courthouse": "Temporary/Rebounded",
+        "social/meeting hall": "Temporary/Rebounded",
+        "lifestyle center": "Temporary/Rebounded",
+        "convention center": "Temporary/Rebounded",
+        "adult education": "Temporary/Rebounded",
+        "pre-school/daycare": "Temporary/Rebounded",
+        "residence hall/dormitory": "Temporary/Rebounded",
+        "other - education": "Temporary/Rebounded",
+        "other - recreation": "Temporary/Rebounded",
+        "other - entertainment/public assembly": "Temporary/Rebounded",
+        "other - lodging/residential": "Temporary/Rebounded",
+        # --- Stable or Increased ---
+        "multifamily housing": "Stable/Increased",
+        "residential": "Stable/Increased",
+        "senior care community": "Stable/Increased",
+        "residential care facility": "Stable/Increased",
+        "hospital (general medical & surgical)": "Stable/Increased",
+        "other - specialty hospital": "Stable/Increased",
+        "health care": "Stable/Increased",
+        "medical office": "Stable/Increased",
+        "urgent care/clinic/other outpatient": "Stable/Increased",
+        "laboratory": "Stable/Increased",
+        "worship facility": "Stable/Increased",
+        "prison/incarceration": "Stable/Increased",
+        "repair services (vehicle, shoe, locksmith, etc.)": "Stable/Increased",
+        # --- Other (ambiguous or mixed) ---
+        "mixed use property": "Other",
+        "other": "Other",
+        "not available": "Other",
+        "other - services": "Other",
+        "commerce de détail": "Other",
+        "vehicle dealership": "Other",
+        "automobile dealership": "Other",
+        "outpatient rehabilitation/physical therapy": "Other",
+        "medical office building": "Other",
+        "lodging": "Other",
+    }
+
+    def categorize(prop: str | None) -> str:
+        key = str(prop).strip().lower()
+        return covid_mapping.get(key, "Other")  # default to "Other" if not in map
+
+    energy_df["COVID Impact Category"] = energy_df[property_col].apply(categorize)
+
+    print("✅ COVID Impact Category assignment (with 'Other' group) complete:")
+    print(energy_df["COVID Impact Category"].value_counts().sort_index())
+
+    return energy_df
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

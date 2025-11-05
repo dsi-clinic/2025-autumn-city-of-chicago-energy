@@ -314,7 +314,7 @@ def plot_building_energy_deltas(
 
 def plot_trend_by_year(
     df: pd.DataFrame, numeric_cols: list[str], agg: str = "median"
-) -> tuple:
+) -> list[tuple]:
     """Plot yearly trends (mean or median) for numeric variables.
 
     Parameters
@@ -332,6 +332,7 @@ def plot_trend_by_year(
         The figure and axes objects for further customization or saving.
 
     """
+    figs = []
     year_col = "Data Year" if "Data Year" in df.columns else "Data_Year"
 
     for col in numeric_cols:
@@ -339,19 +340,20 @@ def plot_trend_by_year(
             continue
 
         fig, ax = plt.subplots(figsize=(8, 5))
-        if agg == "median":
-            trend = df.groupby(year_col)[col].median()
-        else:
-            trend = df.groupby(year_col)[col].mean()
+        trend = (
+            df.groupby(year_col)[col].median()
+            if agg == "median"
+            else df.groupby(year_col)[col].mean()
+        )
+        ax.plot(trend.index, trend.values, marker="o", linestyle="-", color="steelblue")
+        ax.set_title(f"{agg.capitalize()} {col} Over Time")
+        ax.set_xlabel("Year")
+        ax.set_ylabel(col)
+        ax.grid(True, linestyle="--", alpha=0.6)
+        fig.tight_layout()
+        figs.append((fig, ax))
 
-        trend.plot(marker="o", linestyle="-", color="steelblue")
-        plt.title(f"{agg.capitalize()} {col} Over Time")
-        plt.xlabel("Year")
-        plt.ylabel(col)
-        plt.grid(True, linestyle="--", alpha=0.6)
-        plt.tight_layout()
-
-        return fig, ax
+    return figs
 
 
 def plot_mean_cumulative_changes(

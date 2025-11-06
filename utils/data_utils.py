@@ -309,7 +309,7 @@ def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
 
     building_data = energy_df[energy_df["ID"] == building_id]
     if building_data.empty:
-        print(f"No records found for building ID {building_id}")
+        logger.warning(f"No records found for building ID {building_id}")
         return {}
 
     summary = {"Building ID": building_id}
@@ -318,14 +318,10 @@ def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
     skip_cols = {"ID", "Data Year", "Location", "Latitude", "Longitude", "Row_ID"}
 
     numeric_cols = [
-        c
-        for c in building_data.select_dtypes(include="number").columns
-        if c not in skip_cols
+        c for c in building_data.select_dtypes(include="number").columns if c not in skip_cols
     ]
     non_numeric_cols = [
-        c
-        for c in building_data.select_dtypes(exclude="number").columns
-        if c not in skip_cols
+        c for c in building_data.select_dtypes(exclude="number").columns if c not in skip_cols
     ]
 
     # Compute medians for numeric columns
@@ -335,41 +331,39 @@ def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
 
     # Collect unique values for string columns
     for col in non_numeric_cols:
-        unique_vals = sorted(
-            {
-                str(v).strip()
-                for v in building_data[col].dropna().unique()
-                if str(v).strip() != ""
-            }
-        )
+        unique_vals = sorted({
+            str(v).strip()
+            for v in building_data[col].dropna().unique()
+            if str(v).strip() != ""
+        })
         summary[col] = unique_vals
 
-    # Optional pretty print
-    print("=" * 100)
-    print(f"BUILDING SUMMARY — ID: {building_id}")
-    print("=" * 100)
+    # Log summary
+    logger.info("=" * 100)
+    logger.info(f"BUILDING SUMMARY — ID: {building_id}")
+    logger.info("=" * 100)
 
     if "Data Year" in building_data.columns:
         years = building_data["Data Year"].dropna().unique()
         if len(years):
-            print(f"Years Recorded: {years.min()} → {years.max()}")
-        print("-" * 100)
+            logger.info(f"Years Recorded: {years.min()} → {years.max()}")
+        logger.info("-" * 100)
 
     # Display non-numeric summaries horizontally
     for col in non_numeric_cols:
         vals = summary[col]
         if vals:
             if len(vals) == 1:
-                print(f"{col}: {vals[0]}")
+                logger.info(f"{col}: {vals[0]}")
             else:
                 joined = "; ".join(vals)
-                print(f"{col}: {joined}")
-    print("-" * 100)
+                logger.info(f"{col}: {joined}")
+    logger.info("-" * 100)
 
     # Display numeric summaries
     for col in numeric_cols:
         val = summary[col]
-        print(f"{col}: {val}")
-    print("=" * 100)
+        logger.info(f"{col}: {val}")
+    logger.info("=" * 100)
 
     return summary

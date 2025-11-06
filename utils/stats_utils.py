@@ -6,6 +6,9 @@ for the Chicago Energy Benchmarking dataset.
 
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+from statsmodels.regression.linear_model import RegressionResultsWrapper
 
 CORE_COLS = [
     "Data Year",
@@ -32,61 +35,152 @@ CORE_COLS = [
 
 POLICY_YEAR = 2019
 LOW_RATING_THRESHOLD = 2
+PVAL_THRESHOLDS = (0.01, 0.05, 0.1)
 
 
-def prepare_did_data(dataframe: pd.DataFrame) -> pd.DataFrame:
-    """Clean and prepare data for Difference-in-Differences (DiD) regression.
+"""
+stats_utils.py
+Utility functions for Difference-in-Differences (DiD) regression
+and statistical summarization for the Chicago Energy Benchmarking dataset.
+"""
+
+
+# -----------------------------------------------------------------------------
+# Data preparation
+# -----------------------------------------------------------------------------
+def prepare_did_data(data: pd.DataFrame) -> pd.DataFrame:
+    """Prepare dataset for Difference-in-Differences (DiD) analysis.
 
     Adds:
-        - Post: 1 if Data Year >= POLICY_YEAR, else 0
-        - LowRating: 1 if Chicago Energy Rating <= LOW_RATING_THRESHOLD, else 0
-        - ln_FloorArea: log of Gross Floor Area
-        - Interaction: Post × LowRating
+        - Post: 1 if Data Year >= 2019 (post-placard policy), else 0
+        - LowRating: 1 if Chicago Energy Rating <= 2 (treated group), else 0
+        - Interaction: Post * LowRating (the DiD term)
+        - ln_FloorArea: natural log of Gross Floor Area
+        - ln_GHG: log(1 + Total GHG Emissions)
 
     Parameters
     ----------
-    dataframe : pd.DataFrame
-        Raw Chicago Energy Benchmarking dataset.
+    df : pd.DataFrame
+        Clean energy dataset with required columns.
 
     Returns:
     -------
     pd.DataFrame
-        Prepared dataframe with treatment indicators, ready for DiD regression.
+        Copy with added DiD-related columns.
     """
-    df_copy = dataframe.copy()
-
-    # Convert to numeric types
-    df_copy["Data Year"] = pd.to_numeric(df_copy["Data Year"], errors="coerce")
-    df_copy["Chicago Energy Rating"] = pd.to_numeric(
-        df_copy["Chicago Energy Rating"], errors="coerce"
+    clean_data = data.copy()
+    clean_data = clean_data.dropna(
+        subset=[
+            "Total GHG Emissions (Metric Tons CO2e)",
+            "Gross Floor Area - Buildings (sq ft)",
+            "Chicago Energy Rating",
+            "Data Year",
+        ]
     )
-    df_copy["Gross Floor Area - Buildings (sq ft)"] = pd.to_numeric(
-        df_copy["Gross Floor Area - Buildings (sq ft)"], errors="coerce"
-    )
 
-    # Treatment and time variables
-    df_copy["Post"] = (df_copy["Data Year"] >= POLICY_YEAR).astype(int)
-    df_copy["LowRating"] = (
-        df_copy["Chicago Energy Rating"] <= LOW_RATING_THRESHOLD
+    clean_data["Post"] = (clean_data["Data Year"] >= POLICY_YEAR).astype(int)
+    clean_data["LowRating"] = (
+        clean_data["Chicago Energy Rating"] <= LOW_RATING_THRESHOLD
     ).astype(int)
-
-    # Log-transform floor area (avoid log(0))
-    df_copy["ln_FloorArea"] = np.log(
-        df_copy["Gross Floor Area - Buildings (sq ft)"].replace(0, np.nan)
+    clean_data["Interaction"] = clean_data["Post"] * clean_data["LowRating"]
+    clean_data["ln_FloorArea"] = np.log(
+        clean_data["Gross Floor Area - Buildings (sq ft)"]
+    )
+    clean_data["ln_GHG"] = np.log1p(
+        clean_data["Total GHG Emissions (Metric Tons CO2e)"]
     )
 
-    # Interaction term
-    df_copy["Interaction"] = df_copy["Post"] * df_copy["LowRating"]
+    return clean_data
 
-    # Drop incomplete records
-    df_copy = df_copy.dropna(
-        subset=["Total GHG Emissions (Metric Tons CO2e)", "ln_FloorArea"]
+
+# -----------------------------------------------------------------------------
+# Difference-in-Differences regression
+# -----------------------------------------------------------------------------
+
+
+def run_did_regression(
+    df: pd.DataFrame,
+    y_var: str,
+    log: bool = False,
+    include_data_year: bool = True,
+) -> sm.regression.linear_model.RegressionResultsWrapper:
+    """Run Difference-in-Differences OLS regression.
+
+    Controls for building type and year fixed effects.
+    """
+    if log:
+        y_var = "ln_GHG"
+
+    formula = (
+        f"Q('{y_var}') ~ Post + LowRating + Interaction + ln_FloorArea "
+        "+ C(Q('Primary Property Type'))"
+    )
+    if include_data_year:
+        formula += " + C(Q('Data Year'))"
+
+    model = smf.ols(formula=formula, data=df).fit(cov_type="HC1")
+    return model
+
+
+# -----------------------------------------------------------------------------
+# Summary utilities
+# -----------------------------------------------------------------------------
+
+
+def summarize_did_results(
+    model: RegressionResultsWrapper,
+    focus_terms: list[str] | None = None,
+    highlight_energy_types: bool = True,
+) -> pd.DataFrame:
+    """Compact summary of DiD/DDD regression.
+
+    Highlights energy-intensive property types (e.g., hospitals, gyms, labs).
+    """
+    table = model.summary2().tables[1].copy()
+
+    p_col = next((c for c in ["P>|t|", "P>|z|", "P>|T|"] if c in table.columns), None)
+    if p_col is None:
+        raise KeyError("No valid p-value column found in regression output.")
+
+    rename_map = {p_col: "p_value"}
+    if "Coef." in table.columns:
+        rename_map["Coef."] = "coef"
+    if "Std.Err." in table.columns:
+        rename_map["Std.Err."] = "std_err"
+
+    table = table.rename(columns=rename_map)
+
+    if focus_terms is None:
+        focus_terms = ["Post", "LowRating", "Interaction", "ln_FloorArea"]
+
+    mask = table.index.str.contains("|".join(focus_terms))
+
+    if highlight_energy_types:
+        energy_terms = [
+            "hospital",
+            "health club",
+            "fitness center",
+            "laboratory",
+            "data center",
+        ]
+        mask |= table.index.str.contains("|".join(energy_terms), case=False)
+
+    short = table[mask][["coef", "std_err", "p_value"]].round(4)
+
+    short["Significance"] = short["p_value"].apply(
+        lambda p: (
+            "***"
+            if p < PVAL_THRESHOLDS[0]
+            else "**"
+            if p < PVAL_THRESHOLDS[1]
+            else "*"
+            if p < PVAL_THRESHOLDS[2]
+            else ""
+        )
     )
 
-    print(f"[INFO] Prepared DiD dataset with {len(df_copy):,} observations.")
-    print(f"[INFO] Share treated buildings: {df_copy['LowRating'].mean():.2%}")
-
-    return df_copy
+    print(f"[INFO] Showing {len(short)} selected coefficients (policy + energy types).")
+    return short
 
 
 def summarize_missing_by_year(df: pd.DataFrame) -> pd.DataFrame:

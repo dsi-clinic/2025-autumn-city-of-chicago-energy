@@ -114,7 +114,7 @@ def concurrent_buildings(
         A filtered DataFrame containing only records of buildings that have
         data submitted for all years in the specified range, restricted to data within that range.
     """
-    if not input_df:
+    if input_df is None:
         input_df = load_data()
 
     required_years = set(range(start_year, end_year + 1))
@@ -281,5 +281,179 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
     return df_copy
 
 
+def covid_impact_category(
+    df: pd.DataFrame, property_col: str = "Primary Property Type", id_col: str = "ID"
+) -> pd.DataFrame:
+    """Assign each building a COVID impact category based on property type, without filtering by sample size.
+
+    Categories:
+        - Permanent: long-term reduction (remote work / downtown offices)
+        - Temporary/Rebounded: short-term dip & later rebound
+        - Stable/Increased: continuous or essential use
+        - Other: uncertain or mixed-use categories that don't clearly fit
+    """
+    energy_df = df.copy()
+
+    covid_mapping = {
+        # --- Permanent reductions ---
+        "office": "Permanent",
+        "financial office": "Permanent",
+        "bank branch": "Permanent",
+        "commercial": "Permanent",
+        # --- Temporary / Rebounded ---
+        "k-12 school": "Temporary/Rebounded",
+        "college/university": "Temporary/Rebounded",
+        "hotel": "Temporary/Rebounded",
+        "retail store": "Temporary/Rebounded",
+        "supermarket/grocery store": "Temporary/Rebounded",
+        "strip mall": "Temporary/Rebounded",
+        "mall": "Temporary/Rebounded",
+        "wholesale club/supercenter": "Temporary/Rebounded",
+        "movie theater": "Temporary/Rebounded",
+        "museum": "Temporary/Rebounded",
+        "performing arts": "Temporary/Rebounded",
+        "library": "Temporary/Rebounded",
+        "fitness center/health club/gym": "Temporary/Rebounded",
+        "indoor arena": "Temporary/Rebounded",
+        "courthouse": "Temporary/Rebounded",
+        "social/meeting hall": "Temporary/Rebounded",
+        "lifestyle center": "Temporary/Rebounded",
+        "convention center": "Temporary/Rebounded",
+        "adult education": "Temporary/Rebounded",
+        "pre-school/daycare": "Temporary/Rebounded",
+        "residence hall/dormitory": "Temporary/Rebounded",
+        "other - education": "Temporary/Rebounded",
+        "other - recreation": "Temporary/Rebounded",
+        "other - entertainment/public assembly": "Temporary/Rebounded",
+        "other - lodging/residential": "Temporary/Rebounded",
+        # --- Stable or Increased ---
+        "multifamily housing": "Stable/Increased",
+        "residential": "Stable/Increased",
+        "senior care community": "Stable/Increased",
+        "residential care facility": "Stable/Increased",
+        "hospital (general medical & surgical)": "Stable/Increased",
+        "other - specialty hospital": "Stable/Increased",
+        "health care": "Stable/Increased",
+        "medical office": "Stable/Increased",
+        "urgent care/clinic/other outpatient": "Stable/Increased",
+        "laboratory": "Stable/Increased",
+        "worship facility": "Stable/Increased",
+        "prison/incarceration": "Stable/Increased",
+        "repair services (vehicle, shoe, locksmith, etc.)": "Stable/Increased",
+        # --- Other (ambiguous or mixed) ---
+        "mixed use property": "Other",
+        "other": "Other",
+        "not available": "Other",
+        "other - services": "Other",
+        "commerce de détail": "Other",
+        "vehicle dealership": "Other",
+        "automobile dealership": "Other",
+        "outpatient rehabilitation/physical therapy": "Other",
+        "medical office building": "Other",
+        "lodging": "Other",
+    }
+
+    def categorize(prop: str | None) -> str:
+        key = str(prop).strip().lower()
+        return covid_mapping.get(key, "Other")  # default to "Other" if not in map
+
+    energy_df["COVID Impact Category"] = energy_df[property_col].apply(categorize)
+
+    print("✅ COVID Impact Category assignment (with 'Other' group) complete:")
+    print(energy_df["COVID Impact Category"].value_counts().sort_index())
+
+    return energy_df
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
+
+
+def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
+    """Summarize all relevant data for a given building ID.
+
+    - String columns: show unique values horizontally across all years.
+    - Numeric columns: show median values.
+    - Excludes redundant metadata columns like ID, Data Year, and Location.
+
+    Parameters
+    ----------
+    energy_df : pd.DataFrame
+        The full dataset.
+    building_id : str | int
+        The building ID to summarize.
+
+    Returns:
+    -------
+    dict
+        A dictionary summary of all relevant building information.
+    """
+    if "ID" not in energy_df.columns:
+        raise ValueError("The DataFrame must contain an 'ID' column.")
+
+    building_data = energy_df[energy_df["ID"] == building_id]
+    if building_data.empty:
+        logger.warning(f"No records found for building ID {building_id}")
+        return {}
+
+    summary = {"Building ID": building_id}
+
+    # Columns to skip
+    skip_cols = {"ID", "Data Year", "Location", "Latitude", "Longitude", "Row_ID"}
+
+    numeric_cols = [
+        c
+        for c in building_data.select_dtypes(include="number").columns
+        if c not in skip_cols
+    ]
+    non_numeric_cols = [
+        c
+        for c in building_data.select_dtypes(exclude="number").columns
+        if c not in skip_cols
+    ]
+
+    # Compute medians for numeric columns
+    for col in numeric_cols:
+        median_val = building_data[col].median(skipna=True)
+        summary[col] = round(median_val, 2) if pd.notna(median_val) else None
+
+    # Collect unique values for string columns
+    for col in non_numeric_cols:
+        unique_vals = sorted(
+            {
+                str(v).strip()
+                for v in building_data[col].dropna().unique()
+                if str(v).strip() != ""
+            }
+        )
+        summary[col] = unique_vals
+
+    # Log summary
+    logger.info("=" * 100)
+    logger.info(f"BUILDING SUMMARY — ID: {building_id}")
+    logger.info("=" * 100)
+
+    if "Data Year" in building_data.columns:
+        years = building_data["Data Year"].dropna().unique()
+        if len(years):
+            logger.info(f"Years Recorded: {years.min()} → {years.max()}")
+        logger.info("-" * 100)
+
+    # Display non-numeric summaries horizontally
+    for col in non_numeric_cols:
+        vals = summary[col]
+        if vals:
+            if len(vals) == 1:
+                logger.info(f"{col}: {vals[0]}")
+            else:
+                joined = "; ".join(vals)
+                logger.info(f"{col}: {joined}")
+    logger.info("-" * 100)
+
+    # Display numeric summaries
+    for col in numeric_cols:
+        val = summary[col]
+        logger.info(f"{col}: {val}")
+    logger.info("=" * 100)
+
+    return summary

@@ -4,11 +4,18 @@ Provides functions to generate descriptive statistics and missing-value summarie
 for the Chicago Energy Benchmarking dataset.
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from statsmodels.regression.linear_model import RegressionResultsWrapper
+
+logger = logging.getLogger(__name__)
+
+PVAL_THRESHOLDS = [0.01, 0.05, 0.1]
+
 
 CORE_COLS = [
     "Data Year",
@@ -36,13 +43,6 @@ CORE_COLS = [
 POLICY_YEAR = 2019
 LOW_RATING_THRESHOLD = 2
 PVAL_THRESHOLDS = (0.01, 0.05, 0.1)
-
-
-"""
-stats_utils.py
-Utility functions for Difference-in-Differences (DiD) regression
-and statistical summarization for the Chicago Energy Benchmarking dataset.
-"""
 
 
 # -----------------------------------------------------------------------------
@@ -179,7 +179,7 @@ def summarize_did_results(
         )
     )
 
-    print(f"[INFO] Showing {len(short)} selected coefficients (policy + energy types).")
+    logger.info("Showing %d selected coefficients (policy + energy types).", len(short))
     return short
 
 

@@ -1,5 +1,6 @@
 """Initial Explore Page for dashboard"""
 
+import logging
 import time
 
 import streamlit as st
@@ -151,7 +152,6 @@ with st.container():
         st.altair_chart(map_chart, width="stretch")
 
     with BuildCol:
-        # st.write("nothing")
         energy_data["Community Area"] = (
             energy_data["Community Area"].astype(str).str.strip().str.title()
         )
@@ -159,4 +159,4 @@ with st.container():
 
         st.altair_chart(map_build, width="stretch")
 
-st.write(f"Render time: {time.time() - start:.2f} seconds")
+logging.debug(f"Render time for Explore: {time.time() - start:.2f} seconds")

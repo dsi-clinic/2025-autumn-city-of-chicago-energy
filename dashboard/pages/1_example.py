@@ -1,5 +1,6 @@
 """Test page for running dashboard"""
 
+import logging
 import time
 
 import matplotlib.pyplot as plt
@@ -7,15 +8,14 @@ import seaborn as sns
 import streamlit as st
 
 from utils.dashboard_utils import apply_page_config
-from utils.data_utils import concurrent_buildings, load_data, load_neighborhood_geojson
+from utils.data_utils import concurrent_buildings, load_neighborhood_geojson
 from utils.plot_utils import aggregate_metric, plot_choropleth, plot_trend_by_year
 
 apply_page_config()
 start = time.time()
 st.title("Simple Dashboard")
 
-energy_df = load_data()
-energy_df = energy_df[energy_df["Primary Property Type"] != "nan"]
+energy_df = concurrent_buildings()
 
 variables = [
     "ENERGY STAR Score",
@@ -126,4 +126,4 @@ agg_energy_data = {
 map = plot_choropleth(geojson_data, agg_energy_data[map_select], map_select, year_arg)
 st.altair_chart(map, width="stretch")
 
-st.write(f"Render time: {time.time() - start:.2f} seconds")
+logging.debug(f"Render time for Example: {time.time() - start:.2f} seconds")

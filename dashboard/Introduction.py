@@ -1,5 +1,7 @@
 """Main file for running dashboard"""
 
+import logging
+
 import altair as alt
 import numpy as np
 import pandas as pd
@@ -9,7 +11,6 @@ from utils.dashboard_utils import apply_page_config
 from utils.data_utils import load_data
 
 main_dataframe = load_data()
-
 apply_page_config()
 
 st.title("City of Chicago - Energy Dashboard")
@@ -98,3 +99,6 @@ with center:
 
 
 st.divider()
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)

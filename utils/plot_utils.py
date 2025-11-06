@@ -10,6 +10,7 @@ It includes reusable functions for comparing variable distributions before and a
 
 import logging
 import re
+import warnings
 from collections.abc import Callable, Iterable
 
 import altair as alt
@@ -552,14 +553,18 @@ def plot_delta_property_chart(
     df_clean[metric_col] = pd.to_numeric(df_clean[metric_col], errors="coerce")
     df_clean = df_clean.dropna(subset=[metric_col])
 
-    # Compute delta per building
-    df_delta = (
-        df_clean.sort_values([id_col, year_col])
-        .groupby(id_col, group_keys=False)
-        .apply(lambda g: g.assign(Delta=g[metric_col].diff()))
-        .dropna(subset=["Delta"])
-        .reset_index(drop=True)
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=FutureWarning)
+        df_delta = (
+            df_clean.sort_values([id_col, year_col])
+            .groupby(id_col, group_keys=False)
+            .apply(
+                lambda g: g.assign(Delta=g[metric_col].diff()),
+                include_groups=True,
+            )
+            .dropna(subset=["Delta"])
+            .reset_index(drop=True)
+        )
 
     if top_types is None:
         top_types = sorted(df_clean[property_col].unique())

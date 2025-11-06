@@ -318,10 +318,14 @@ def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
     skip_cols = {"ID", "Data Year", "Location", "Latitude", "Longitude", "Row_ID"}
 
     numeric_cols = [
-        c for c in building_data.select_dtypes(include="number").columns if c not in skip_cols
+        c
+        for c in building_data.select_dtypes(include="number").columns
+        if c not in skip_cols
     ]
     non_numeric_cols = [
-        c for c in building_data.select_dtypes(exclude="number").columns if c not in skip_cols
+        c
+        for c in building_data.select_dtypes(exclude="number").columns
+        if c not in skip_cols
     ]
 
     # Compute medians for numeric columns
@@ -331,11 +335,13 @@ def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
 
     # Collect unique values for string columns
     for col in non_numeric_cols:
-        unique_vals = sorted({
-            str(v).strip()
-            for v in building_data[col].dropna().unique()
-            if str(v).strip() != ""
-        })
+        unique_vals = sorted(
+            {
+                str(v).strip()
+                for v in building_data[col].dropna().unique()
+                if str(v).strip() != ""
+            }
+        )
         summary[col] = unique_vals
 
     # Log summary

@@ -636,6 +636,76 @@ def plot_delta_property_chart(
     return final_chart
 
 
+def plot_did_trend(
+    df: pd.DataFrame,
+    year_col: str,
+    group_col: str,
+    outcome_col: str,
+    policy_year: int,
+    group_labels: dict[int, str],
+    title: str = "Difference-in-Differences Trend",
+) -> alt.Chart:
+    """Plot pre- and post-policy trends for treatment and control groups.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataset containing year, group, and outcome columns.
+    year_col : str
+        Column name for the time/year variable.
+    group_col : str
+        Binary group indicator (0 = control, 1 = treated).
+    outcome_col : str
+        Column name of the outcome variable.
+    policy_year : int
+        Year when the policy/intervention took effect.
+    group_labels : dict[int, str]
+        Mapping of group indicator values (0,1) to readable labels.
+    title : str
+        Chart title.
+
+    Returns:
+    -------
+    alt.Chart
+        Altair line chart showing DiD group trends over time.
+    """
+    trend_df = (
+        df.groupby([year_col, group_col], as_index=False)[outcome_col]
+        .mean()
+        .rename(columns={outcome_col: "MeanOutcome"})
+    )
+    trend_df[group_col] = trend_df[group_col].map(group_labels)
+
+    line = (
+        alt.Chart(trend_df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X(f"{year_col}:O", title="Year"),
+            y=alt.Y("MeanOutcome:Q", title=outcome_col),
+            color=alt.Color(f"{group_col}:N", title="Group"),
+            tooltip=[
+                alt.Tooltip(f"{year_col}:O", title="Year"),
+                alt.Tooltip(f"{group_col}:N", title="Group"),
+                alt.Tooltip("MeanOutcome:Q", title="Mean Outcome", format=".2f"),
+            ],
+        )
+    )
+
+    vline = (
+        alt.Chart(pd.DataFrame({"x": [policy_year]}))
+        .mark_rule(strokeDash=[6, 4], color="red")
+        .encode(x="x:O")
+    )
+
+    chart = (line + vline).properties(
+        title=title,
+        width=500,
+        height=300,
+    )
+
+    return chart
+
+
 # ----------Regression Line plots----------
 
 

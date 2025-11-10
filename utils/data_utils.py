@@ -9,6 +9,11 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+
 
 def clean_numeric(series: pd.Series) -> pd.Series:
     """Cleaning columns to be numeric data type"""
@@ -359,8 +364,11 @@ def covid_impact_category(
 
     energy_df["COVID Impact Category"] = energy_df[property_col].apply(categorize)
 
-    print("✅ COVID Impact Category assignment (with 'Other' group) complete:")
-    print(energy_df["COVID Impact Category"].value_counts().sort_index())
+    logging.info("✅ COVID Impact Category assignment (with 'Other' group) complete.")
+    logging.info(
+        "Category counts:\n%s",
+        energy_df["COVID Impact Category"].value_counts().sort_index().to_string(),
+    )
 
     return energy_df
 

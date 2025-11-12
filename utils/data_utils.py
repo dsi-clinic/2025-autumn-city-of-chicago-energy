@@ -2,11 +2,11 @@
 
 import json
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -239,20 +239,35 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
     missing_vals = {"nan", "none", ""}
 
     merge_to_other = {
-        'adult education', 'other - education', 'bank branch', 'other - public services', 
-        'vehicle dealership', 'courthouse', 'financial office', 'automobile dealership',
-        'prison/incarceration', 'pre-school/daycare', 'repair services (vehicle, shoe, locksmith, etc.)',
-        'lodging', 'health care', 'convention center', 'outpatient rehabilitation/physical therapy',
-        'commerce de détail', 'urgent care/clinic/other outpatient', 'other - services', 'indoor arena'
+        "adult education",
+        "other - education",
+        "bank branch",
+        "other - public services",
+        "vehicle dealership",
+        "courthouse",
+        "financial office",
+        "automobile dealership",
+        "prison/incarceration",
+        "pre-school/daycare",
+        "repair services (vehicle, shoe, locksmith, etc.)",
+        "lodging",
+        "health care",
+        "convention center",
+        "outpatient rehabilitation/physical therapy",
+        "commerce de détail",
+        "urgent care/clinic/other outpatient",
+        "other - services",
+        "indoor arena",
     }
 
     # Map each building ID to its valid property types
     type_map = df_copy.groupby("ID")["Primary Property Type"].apply(
-    lambda x: [
-        re.sub(r"\s+", " ", str(v)).strip().lower() 
-        for v in x if pd.notna(v) and str(v).strip().lower() not in missing_vals
-    ]
-)
+        lambda x: [
+            re.sub(r"\s+", " ", str(v)).strip().lower()
+            for v in x
+            if pd.notna(v) and str(v).strip().lower() not in missing_vals
+        ]
+    )
 
     id_to_type = {}
 
@@ -280,13 +295,16 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
         # Case 5: mall types -> unify as 'mall'
         if lower_types & {"enclosed mall", "strip mall", "other - mall"}:
             id_to_type[bid] = "mall"
-        
+
         # Case 6: residential types -> unify as 'residential'
         if lower_types & {"residential", "other - lodging/residential"}:
             id_to_type[bid] = "residential"
 
         # Case 7: hospital types -> unify as 'hospital'
-        if lower_types & {"hospital (general medical & surgical)", "other - specialty hospital"}:
+        if lower_types & {
+            "hospital (general medical & surgical)",
+            "other - specialty hospital",
+        }:
             id_to_type[bid] = "hospital"
 
         # Case 8: other - recreation -> recreation
@@ -294,8 +312,8 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
             id_to_type[bid] = "recreation"
 
         if lower_types & merge_to_other:
-            id_to_type[bid] = 'other'
-        
+            id_to_type[bid] = "other"
+
     # Apply replacements
     def replace_type(row: pd.Series) -> str:
         val = str(row["Primary Property Type"]).strip().lower()

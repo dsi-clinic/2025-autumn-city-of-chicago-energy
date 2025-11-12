@@ -16,6 +16,7 @@ dependencies = [
   "seaborn>=0.13.2",
   "altair>=5.3.0",
   "streamlit>=1.51.0",
+  "geopandas>=1.1.1",
 ]
 
 [tool.ruff.lint]

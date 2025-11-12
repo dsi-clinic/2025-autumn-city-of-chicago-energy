@@ -1,8 +1,10 @@
 """Test page for running dashboard"""
 
+import json
 import logging
 import time
 
+import geopandas as gpd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
@@ -101,9 +103,21 @@ st.title("Maps")
 
 # No loaded data inside as within concurrent_buildings() is uses load_data() within it
 energy_data = concurrent_buildings()
+
+# Load using your custom function
 geojson_data = load_neighborhood_geojson(
     "/project/src/data/chicago_geo/neighborhood_chi.geojson"
 )
+
+# Convert dict to GeoDataFrame
+gdf = gpd.GeoDataFrame.from_features(geojson_data["features"])
+
+# Simplify geometry in memory
+gdf["geometry"] = gdf["geometry"].simplify(tolerance=0.01, preserve_topology=True)
+
+# Convert back to dict if needed downstream
+geojson_data = json.loads(gdf.to_json())
+
 
 available_years = sorted(energy_data["Data Year"].dropna().unique())
 year_options = ["Average (All Years)"] + sorted(

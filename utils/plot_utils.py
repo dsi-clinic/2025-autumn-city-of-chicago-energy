@@ -312,6 +312,47 @@ def plot_building_energy_deltas(
 # ----------Line graphs-----------
 
 
+def plot_relative_change(
+    data: pd.DataFrame,
+    year_col: str,
+    nat_col: str,
+    chi_col: str,
+    title: str,
+    ylabel: str = "Percent Change (%)",
+    baseline_year: int = 2018,
+) -> None:
+    """Plot relative percent change (vs baseline) for National vs Chicago."""
+    data = data.copy()
+    base_nat = data.loc[data[year_col] == baseline_year, nat_col].to_numpy()[0]
+    base_chi = data.loc[data[year_col] == baseline_year, chi_col].to_numpy()[0]
+
+    data["Nat_Percent_Change"] = (data[nat_col] / base_nat - 1) * 100
+    data["Chi_Percent_Change"] = (data[chi_col] / base_chi - 1) * 100
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(
+        data[year_col],
+        data["Nat_Percent_Change"],
+        marker="o",
+        label="National % change",
+    )
+    plt.plot(
+        data[year_col],
+        data["Chi_Percent_Change"],
+        marker="s",
+        label="Chicago % change",
+    )
+    plt.axhline(0, color="black", linewidth=1)
+    plt.axvline(2019, color="gray", linestyle="--", alpha=0.6, label="Placard starts")
+    plt.title(title, fontsize=13)
+    plt.xlabel("Year")
+    plt.ylabel(ylabel)
+    plt.grid(True, linestyle="--", alpha=0.6)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
 def plot_trend_by_year(
     df: pd.DataFrame, numeric_cols: list[str], agg: str = "median"
 ) -> list[tuple]:

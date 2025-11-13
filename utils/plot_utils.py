@@ -515,8 +515,35 @@ def plot_delta_property_chart(
     width: int = 700,
     height: int = 400,
 ) -> alt.Chart:
-    """Clean data, compute year-over-year change per building, and visualize Δ (year-to-year change) by property type with median trend and 2019 marker."""
-    # Data preparation
+    """Clean data, compute year-over-year change per building, and visualize Δ (year-to-year change) by property type with median trend and 2019 marker.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Raw energy benchmarking dataframe.
+    metric_col : str, default="Site EUI (kBtu/sq ft)"
+        Energy metric column to compute deltas from.
+    property_col : str, default="Primary Property Type"
+        Column for property type.
+    id_col : str, default="ID"
+        Unique building identifier column.
+    year_col : str, default="Data Year"
+        Column representing the reporting year.
+    top_types : iterable of str, optional
+        List of property types to show in the dropdown (if None, inferred from df).
+    marker_year : int, default=2019
+        Year to mark with a red dashed vertical line (Chicago Energy Placard introduction).
+    width : int, default=700
+        Chart width.
+    height : int, default=400
+        Chart height.
+
+    Returns:
+    -------
+    alt.Chart
+        Interactive Altair layered chart.
+    """
+    # Data preperation
     cols = [id_col, year_col, property_col, metric_col]
     df_clean = df[cols].dropna().copy()
 
@@ -542,7 +569,6 @@ def plot_delta_property_chart(
     if top_types is None:
         top_types = sorted(df_clean[property_col].unique())
 
-    # Rest of the function remains the same...
     property_select = alt.selection_point(
         fields=[property_col],
         bind=alt.binding_select(options=list(top_types), name="Property Type: "),

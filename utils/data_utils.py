@@ -34,6 +34,9 @@ def load_data() -> pd.DataFrame:
     path = DATA_DIR / "chicago_energy_benchmarking"
 
     if not path.exists():
+        path = Path("/project") / "data" / "chicago_energy_benchmarking"
+
+    if not path.exists():
         raise FileNotFoundError(f"Data directory not found: {path}")
 
     # Get all CSVs in this directory (non-recursive)

@@ -382,6 +382,54 @@ def plot_multi_line_trend(
     return fig, ax
 
 
+def plot_relative_change(
+    data: pd.DataFrame,
+    year_col: str,
+    nat_col: str,
+    chi_col: str,
+    title: str,
+    ylabel: str = "Percent Change (%)",
+    baseline_year: int = 2018,
+) -> tuple:
+    """Plot relative percent change (vs baseline) for National vs Chicago."""
+    data = data.copy()
+
+    # Baseline values
+    base_nat = data.loc[data[year_col] == baseline_year, nat_col].to_numpy()[0]
+    base_chi = data.loc[data[year_col] == baseline_year, chi_col].to_numpy()[0]
+
+    # Compute %
+    data["Nat_Percent_Change"] = (data[nat_col] / base_nat - 1) * 100
+    data["Chi_Percent_Change"] = (data[chi_col] / base_chi - 1) * 100
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    ax.plot(
+        data[year_col],
+        data["Nat_Percent_Change"],
+        marker="o",
+        label="National % change",
+    )
+    ax.plot(
+        data[year_col],
+        data["Chi_Percent_Change"],
+        marker="s",
+        label="Chicago % change",
+    )
+
+    ax.axhline(0, color="black", linewidth=1)
+    ax.axvline(2019, color="gray", linestyle="--", alpha=0.6, label="Placard starts")
+
+    ax.set_title(title, fontsize=13)
+    ax.set_xlabel("Year")
+    ax.set_ylabel(ylabel)
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend()
+
+    fig.tight_layout()
+    return fig, ax
+
+
 def plot_trend_by_year(
     df: pd.DataFrame, numeric_cols: list[str], agg: str = "median"
 ) -> list[tuple]:

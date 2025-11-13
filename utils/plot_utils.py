@@ -312,45 +312,74 @@ def plot_building_energy_deltas(
 # ----------Line graphs-----------
 
 
-def plot_relative_change(
-    data: pd.DataFrame,
+def plot_multi_line_trend(
+    df: pd.DataFrame,
     year_col: str,
-    nat_col: str,
-    chi_col: str,
-    title: str,
-    ylabel: str = "Percent Change (%)",
-    baseline_year: int = 2018,
-) -> None:
-    """Plot relative percent change (vs baseline) for National vs Chicago."""
-    data = data.copy()
-    base_nat = data.loc[data[year_col] == baseline_year, nat_col].to_numpy()[0]
-    base_chi = data.loc[data[year_col] == baseline_year, chi_col].to_numpy()[0]
+    value_cols: list[str],
+    labels: list[str] | None = None,
+    title: str = "Trend Over Time",
+    ylabel: str = "",
+    marker_year: int | None = None,
+    figsize: tuple = (8, 5),
+) -> tuple:
+    """Plot multiple lines (e.g., Chicago vs National) on the same chart.
 
-    data["Nat_Percent_Change"] = (data[nat_col] / base_nat - 1) * 100
-    data["Chi_Percent_Change"] = (data[chi_col] / base_chi - 1) * 100
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataset containing year and metric columns.
+    year_col : str
+        Name of the year column.
+    value_cols : list[str]
+        Columns to plot as separate lines.
+    labels : list[str], optional
+        Pretty labels for legend. If None, use value_cols.
+    title : str
+        Chart title.
+    ylabel : str
+        Label for y-axis.
+    marker_year : int, optional
+        Draw a vertical dashed line (e.g., 2019 for placards).
+    figsize : tuple
+        Figure size.
 
-    plt.figure(figsize=(8, 5))
-    plt.plot(
-        data[year_col],
-        data["Nat_Percent_Change"],
-        marker="o",
-        label="National % change",
-    )
-    plt.plot(
-        data[year_col],
-        data["Chi_Percent_Change"],
-        marker="s",
-        label="Chicago % change",
-    )
-    plt.axhline(0, color="black", linewidth=1)
-    plt.axvline(2019, color="gray", linestyle="--", alpha=0.6, label="Placard starts")
-    plt.title(title, fontsize=13)
-    plt.xlabel("Year")
-    plt.ylabel(ylabel)
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+    Returns:
+    -------
+    Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
+        Figure and axis objects.
+    """
+    if labels is None:
+        labels = value_cols
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for col, label in zip(value_cols, labels):
+        ax.plot(
+            df[year_col],
+            df[col],
+            marker="o",
+            linewidth=2,
+            label=label,
+        )
+
+    if marker_year is not None:
+        ax.axvline(
+            marker_year,
+            color="gray",
+            linestyle="--",
+            alpha=0.6,
+            label=f"Policy year {marker_year}",
+        )
+
+    # ---- Styling ----
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel("Year", fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend()
+    fig.tight_layout()
+
+    return fig, ax
 
 
 def plot_trend_by_year(

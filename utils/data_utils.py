@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from utils.settings import DATA_DIR
+
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(
@@ -28,7 +30,7 @@ def clean_numeric(series: pd.Series) -> pd.Series:
 
 def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
-    path = Path("/project") / "data" / "chicago_energy_benchmarking"
+    path = DATA_DIR / "chicago_energy_benchmarking"
 
     if not path.exists():
         raise FileNotFoundError(f"Data directory not found: {path}")

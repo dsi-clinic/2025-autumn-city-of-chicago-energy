@@ -7,11 +7,10 @@ import geopandas as gpd
 import pandas as pd
 import streamlit as st
 
-from utils.data_utils import concurrent_buildings, load_neighborhood_geojson
-from utils.plot_utils import (
-    aggregate_metric,
-    plot_choropleth,
-)
+from utils.data_utils import concurrent_buildings, load_data, load_neighborhood_geojson
+from utils.plot_utils import aggregate_metric, plot_building_count_map, plot_choropleth
+
+# Page layout #-------------------------------------------------------------------
 
 
 def apply_page_config() -> None:
@@ -23,10 +22,22 @@ def apply_page_config() -> None:
     )
 
 
+# Caching Data #-------------------------------------------------------------------
+
+
+@st.cache_data
+def cache_full_data() -> pd.DataFrame:
+    """Caching main data"""
+    return load_data()
+
+
 @st.cache_data
 def cache_energy_data() -> pd.DataFrame:
     """Caching main data"""
     return concurrent_buildings()
+
+
+energy_data = cache_energy_data()
 
 
 @st.cache_data
@@ -47,6 +58,37 @@ def cache_geojson() -> dict:
 
 
 @st.cache_data
+def metric_list() -> list:
+    """Loading list of metrics used for project"""
+    return [
+        "ENERGY STAR Score",
+        "Electricity Use (kBtu)",
+        "Natural Gas Use (kBtu)",
+        "District Steam Use (kBtu)",
+        "District Chilled Water Use (kBtu)",
+        "All Other Fuel Use (kBtu)",
+        "Site EUI (kBtu/sq ft)",
+        "Source EUI (kBtu/sq ft)",
+        "Weather Normalized Site EUI (kBtu/sq ft)",
+        "Weather Normalized Source EUI (kBtu/sq ft)",
+        "Total GHG Emissions (Metric Tons CO2e)",
+        "GHG Intensity (kg CO2e/sq ft)",
+    ]
+
+
+@st.cache_data
+def year_list() -> list:
+    """List of all years"""
+    years_list = sorted(
+        [int(year) for year in sorted(energy_data["Data Year"].dropna().unique())]
+    )
+    return years_list
+
+
+# Graph specific Dataframes #-------------------------------------------------------------------
+
+
+@st.cache_data
 def cache_build_all_aggregates(
     df: pd.DataFrame, metrics: list[str]
 ) -> dict[str, pd.DataFrame]:
@@ -64,3 +106,24 @@ def cache_build_all_year_charts(
         chart = plot_choropleth(geojson, agg, metric, year=None)
         charts[metric] = chart
     return charts
+
+
+# Graph Helper Functions #-------------------------------------------------------------------
+
+
+def render_yearly_map(
+    year: int, geojson_data: json, data: pd.DataFrame, log_scale: bool = False
+) -> alt.Chart:
+    """To modularize map rendering"""
+    chart = plot_building_count_map(geojson_data, data, year=year)
+    base, overlay = chart.layer
+    overlay = overlay.encode(
+        color=alt.Color(
+            "Building_Count:Q",
+            scale=alt.Scale(
+                type="log" if log_scale else "linear", domain=[10, 200], scheme="blues"
+            ),
+            legend=alt.Legend(title="Number of Buildings"),
+        )
+    )
+    return alt.layer(base, overlay).properties(width=600, height=400)

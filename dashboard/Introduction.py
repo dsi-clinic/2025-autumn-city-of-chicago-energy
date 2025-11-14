@@ -106,7 +106,7 @@ with col1:
     )
 
     st.markdown(
-        "The final dataframe filters dowe data to only have concurrent buildings for 10 year span"
+        "The final dataframe filters down data to only have concurrent buildings for the 10 year span"
     )
     st.markdown("#### Definitions")
     st.markdown(

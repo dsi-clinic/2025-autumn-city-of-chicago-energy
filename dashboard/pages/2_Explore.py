@@ -2,18 +2,20 @@
 
 import time
 
-import altair as alt
 import streamlit as st
 
 from utils.dashboard_utils import (
     apply_page_config,
     cache_energy_data,
+    cache_full_data,
     cache_geojson,
+    metric_list,
+    render_yearly_map,
+    year_list,
 )
 from utils.plot_utils import (
     aggregate_metric,
     plot_bar,
-    plot_building_count_map,
     plot_choropleth,
     plot_trend_by_year,
 )
@@ -24,38 +26,30 @@ start = time.time()
 st.title("Exploratory Dashboard with Independent Dynamic Filters")
 
 # -------------------- Load Data --------------------
+full_data = cache_full_data()
 energy_data = cache_energy_data()
 geojson_data = cache_geojson()
+metrics_list = metric_list()
 
 # -------------------- Define Lists --------------------
-metrics_list = [
-    "ENERGY STAR Score",
-    "Electricity Use (kBtu)",
-    "Natural Gas Use (kBtu)",
-    "District Steam Use (kBtu)",
-    "District Chilled Water Use (kBtu)",
-    "All Other Fuel Use (kBtu)",
-    "Site EUI (kBtu/sq ft)",
-    "Source EUI (kBtu/sq ft)",
-    "Weather Normalized Site EUI (kBtu/sq ft)",
-    "Weather Normalized Source EUI (kBtu/sq ft)",
-    "Total GHG Emissions (Metric Tons CO2e)",
-    "GHG Intensity (kg CO2e/sq ft)",
-]
 
 available_years = sorted(energy_data["Data Year"].dropna().unique())
 years_list = ["Average (All Years)"] + sorted(
     [int(year) for year in available_years], reverse=True
 )
+years_list_n = year_list()
 # ------------------- Start Dashboard --------------------
 
 # Ensure Community Area matches pri_neigh in geojson
+full_data["Community Area"] = (
+    full_data["Community Area"].astype(str).str.strip().str.title()
+)
+
 energy_data["Community Area"] = (
     energy_data["Community Area"].astype(str).str.strip().str.title()
 )
-
-st.markdown("### Building Count Over Time - Animation")
-
+# Log scale toggle
+log_scale = st.checkbox("Use Log Scale", value=False)
 
 # Initialize session state
 if "playing" not in st.session_state:
@@ -63,88 +57,70 @@ if "playing" not in st.session_state:
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
 
-# Reverse the year list for animation
-reversed_years = list(reversed(years_list[1:]))
+# Layout columns
+col1, col2 = st.columns([1, 1])
 
-# Log scale toggle
-log_scale = st.checkbox("Use Log Scale", value=False)
-
-# Controls
-col1, col2, col3 = st.columns(3)
+# --- Full Data Animation ---
 with col1:
-    if st.button("▶️ Play Animation"):
-        st.session_state.playing = True
-with col2:
-    if st.button("⏸️ Pause"):
-        st.session_state.playing = False
-with col3:
-    selected_year = st.selectbox(
-        "Current year:",
-        reversed_years,
-        index=st.session_state.current_index,
-        key="year_selector",
-    )
-    # Sync dropdown with index
-    if selected_year != reversed_years[st.session_state.current_index]:
-        st.session_state.current_index = reversed_years.index(selected_year)
-        st.session_state.playing = False
+    st.markdown("### Full Data Building Count Over Time - Animation")
 
-# Placeholder for map
-animation_placeholder = st.empty()
-
-# Animation loop
-if st.session_state.playing:
-    while st.session_state.playing and st.session_state.current_index < len(
-        reversed_years
-    ):
-        current_year = reversed_years[st.session_state.current_index]
-
-        with animation_placeholder.container():
-            st.markdown(f"### Year: {current_year}")
-            yearly_map = plot_building_count_map(
-                geojson_data, energy_data, year=current_year
-            )
-
-            # Apply log scale if enabled
-            if log_scale:
-                yearly_map = yearly_map.encode(
-                    color=alt.Color("count:Q", scale=alt.Scale(type="log"))
-                )
-
-            st.altair_chart(yearly_map, use_container_width=True)
-
-            # Progress bar
-            progress = st.session_state.current_index / (len(reversed_years) - 1)
-            st.progress(progress)
-            st.caption(
-                f"Progress: {st.session_state.current_index + 1} of {len(reversed_years)}"
-            )
-
-        time.sleep(1)
-        st.session_state.current_index += 1
-
-        # Loop back to start
-        if st.session_state.current_index >= len(reversed_years):
-            st.session_state.current_index = 0
-
-    st.session_state.playing = False
-    st.rerun()
-
-# Static view when paused
-else:
-    current_year = reversed_years[st.session_state.current_index]
-    with animation_placeholder.container():
-        st.markdown(f"### Year: {current_year}")
-        yearly_map = plot_building_count_map(
-            geojson_data, energy_data, year=current_year
+    ctrl1, ctrl2, ctrl3 = st.columns([1, 1, 1])
+    with ctrl1:
+        if st.button("▶️ Play Animation"):
+            st.session_state.playing = True
+    with ctrl2:
+        if st.button("⏸️ Pause"):
+            st.session_state.playing = False
+    with ctrl3:
+        selected_year = st.selectbox(
+            "Current year:",
+            years_list_n,
+            index=st.session_state.current_index,
+            key="year_selector",
         )
+        if selected_year != years_list_n[st.session_state.current_index]:
+            st.session_state.current_index = years_list_n.index(selected_year)
+            st.session_state.playing = False
 
-        if log_scale:
-            yearly_map = yearly_map.encode(
-                color=alt.Color("count:Q", scale=alt.Scale(type="log"))
+    animation_placeholder = st.empty()
+
+    if st.session_state.playing:
+        while st.session_state.playing and st.session_state.current_index < len(
+            years_list_n
+        ):
+            current_year = years_list_n[st.session_state.current_index]
+            with animation_placeholder.container():
+                st.altair_chart(
+                    render_yearly_map(current_year, geojson_data, full_data, log_scale),
+                    use_container_width=True,
+                )
+                st.progress(st.session_state.current_index / (len(years_list_n) - 1))
+                st.caption(
+                    f"{st.session_state.current_index + 1} of {len(years_list_n)}"
+                )
+            time.sleep(1)
+            st.session_state.current_index += 1
+            if st.session_state.current_index >= len(years_list_n):
+                st.session_state.current_index = 0
+        st.session_state.playing = False
+        st.rerun()
+    else:
+        current_year = years_list_n[st.session_state.current_index]
+        with animation_placeholder.container():
+            st.altair_chart(
+                render_yearly_map(current_year, geojson_data, full_data, log_scale),
+                use_container_width=True,
             )
 
-        st.altair_chart(yearly_map, use_container_width=True)
+# --- Concurrent Buildings Static Map ---
+with col2:
+    st.markdown("### Concurrent Buildings Count Over Time")
+    cur_year = st.selectbox("Select year:", years_list_n, key="year_select")
+    st.altair_chart(
+        render_yearly_map(cur_year, geojson_data, energy_data, log_scale),
+        use_container_width=True,
+    )
+
 
 st.markdown("### Metric Exploration")
 st.markdown("#### Duel Metric Trends")
@@ -241,90 +217,47 @@ st.divider()
 col1, col2 = st.columns(2)
 
 # --- Trend Line Plot Controls ---
-with col1:
-    st.markdown("### Trend Line Plot Controls")
-    trend_row1 = st.columns(2)
-    trend_row2 = st.columns(2)
 
-    with trend_row1[0]:
-        trend_metric = st.selectbox("Trend Metric", metrics_list, key="trend_metric")
-    with trend_row1[1]:
-        valid_trend_neighborhoods = [
-            n
-            for n in sorted(energy_data["Community Area"].dropna().unique())
-            if energy_data[energy_data["Community Area"] == n][trend_metric]
-            .dropna()
-            .shape[0]
-            > 0
-        ]
-        invalid_trend_neighborhoods = sorted(
-            set(energy_data["Community Area"].dropna()) - set(valid_trend_neighborhoods)
-        )
-        trend_neighborhood = st.selectbox(
-            "Trend Community area", ["All"] + valid_trend_neighborhoods
-        )
+st.markdown("### Line and Map Plot Combo")
+trend_row1 = st.columns(2)
+trend_row2 = st.columns(2)
 
-    with trend_row2[0]:
-        valid_trend_building_types = [
-            b
-            for b in sorted(energy_data["Primary Property Type"].dropna().unique())
-            if energy_data[energy_data["Primary Property Type"] == b][trend_metric]
-            .dropna()
-            .shape[0]
-            > 0
-        ]
-        invalid_trend_building_types = sorted(
-            set(energy_data["Primary Property Type"].dropna())
-            - set(valid_trend_building_types)
-        )
-        trend_building_type = st.selectbox(
-            "Trend Building Type", ["All"] + valid_trend_building_types
-        )
-    with trend_row2[1]:
-        trend_year = st.selectbox("Trend Year", years_list, key="trend_year")
+with trend_row1[0]:
+    trend_metric = st.selectbox("Metric Selection", metrics_list, key="combo_metric")
+with trend_row1[1]:
+    valid_trend_neighborhoods = [
+        n
+        for n in sorted(energy_data["Community Area"].dropna().unique())
+        if energy_data[energy_data["Community Area"] == n][trend_metric]
+        .dropna()
+        .shape[0]
+        > 0
+    ]
+    invalid_trend_neighborhoods = sorted(
+        set(energy_data["Community Area"].dropna()) - set(valid_trend_neighborhoods)
+    )
+    trend_neighborhood = st.selectbox(
+        "Community Area Selection", ["All"] + valid_trend_neighborhoods
+    )
 
-# --- Choropleth Map Controls ---
-with col2:
-    st.markdown("### Choropleth Map Controls")
-    map_row1 = st.columns(2)
-    map_row2 = st.columns(2)
-
-    with map_row1[0]:
-        map_metric = st.selectbox("Map Metric", metrics_list, key="map_metric")
-    with map_row1[1]:
-        valid_map_neighborhoods = [
-            n
-            for n in sorted(energy_data["Community Area"].dropna().unique())
-            if energy_data[energy_data["Community Area"] == n][map_metric]
-            .dropna()
-            .shape[0]
-            > 0
-        ]
-        invalid_map_neighborhoods = sorted(
-            set(energy_data["Community Area"].dropna()) - set(valid_map_neighborhoods)
-        )
-        map_neighborhood = st.selectbox(
-            "Map Community area", ["All"] + valid_map_neighborhoods
-        )
-
-    with map_row2[0]:
-        valid_map_building_types = [
-            b
-            for b in sorted(energy_data["Primary Property Type"].dropna().unique())
-            if energy_data[energy_data["Primary Property Type"] == b][map_metric]
-            .dropna()
-            .shape[0]
-            > 0
-        ]
-        invalid_map_building_types = sorted(
-            set(energy_data["Primary Property Type"].dropna())
-            - set(valid_map_building_types)
-        )
-        map_building_type = st.selectbox(
-            "Map Building Type", ["All"] + valid_map_building_types
-        )
-    with map_row2[1]:
-        map_year = st.selectbox("Map Year", years_list, key="map_year")
+with trend_row2[0]:
+    valid_trend_building_types = [
+        b
+        for b in sorted(energy_data["Primary Property Type"].dropna().unique())
+        if energy_data[energy_data["Primary Property Type"] == b][trend_metric]
+        .dropna()
+        .shape[0]
+        > 0
+    ]
+    invalid_trend_building_types = sorted(
+        set(energy_data["Primary Property Type"].dropna())
+        - set(valid_trend_building_types)
+    )
+    trend_building_type = st.selectbox(
+        "Building Type Selection", ["All"] + valid_trend_building_types
+    )
+with trend_row2[1]:
+    trend_year = st.selectbox("Trend Year for Map", years_list, key="combo_year")
 
 # -------------------- Layout: Visualizations --------------------
 col1, col2 = st.columns(2)
@@ -341,10 +274,6 @@ with col1:
         trend_filtered_df = trend_filtered_df[
             trend_filtered_df["Primary Property Type"] == trend_building_type
         ]
-    if trend_year != "Average (All Years)":
-        trend_filtered_df = trend_filtered_df[
-            trend_filtered_df["Data Year"] == int(trend_year)
-        ]
 
     fig1, ax1 = plot_trend_by_year(trend_filtered_df, [trend_metric], agg="mean")
     title_parts = [f"{trend_metric} Over Time"]
@@ -352,8 +281,6 @@ with col1:
         title_parts.append(f"in {trend_neighborhood}")
     if trend_building_type != "All":
         title_parts.append(f"for {trend_building_type}")
-    if trend_year != "Average (All Years)":
-        title_parts.append(f"in {trend_year}")
     ax1.set_title(" • ".join(title_parts), fontsize=14)
 
     fig1.patch.set_facecolor("#0E1117")
@@ -371,42 +298,44 @@ with col1:
 with col2:
     st.markdown("### Choropleth Map")
     map_filtered_df = energy_data.copy()
-    if map_neighborhood != "All":
+    if trend_neighborhood != "All":
         map_filtered_df = map_filtered_df[
-            map_filtered_df["Community Area"] == map_neighborhood
+            map_filtered_df["Community Area"] == trend_neighborhood
         ]
-    if map_building_type != "All":
+    if trend_building_type != "All":
         map_filtered_df = map_filtered_df[
-            map_filtered_df["Primary Property Type"] == map_building_type
+            map_filtered_df["Primary Property Type"] == trend_building_type
         ]
-    if map_year != "Average (All Years)":
-        map_filtered_df = map_filtered_df[map_filtered_df["Data Year"] == int(map_year)]
+    if trend_year != "Average (All Years)":
+        map_filtered_df = map_filtered_df[
+            map_filtered_df["Data Year"] == int(trend_year)
+        ]
 
-    map_year_arg = None if map_year == "Average (All Years)" else int(map_year)
-    agg_df = aggregate_metric(map_filtered_df, map_metric)
-    map_chart = plot_choropleth(geojson_data, agg_df, map_metric, year=map_year_arg)
+    map_year_arg = None if trend_year == "Average (All Years)" else int(trend_year)
+    agg_df = aggregate_metric(map_filtered_df, trend_metric)
+    map_chart = plot_choropleth(geojson_data, agg_df, trend_metric, year=map_year_arg)
     st.altair_chart(map_chart, use_container_width=True)
 
 # -------------------- Layout: Diagnostics --------------------
-diag_title_col1, diag_title_col2 = st.columns(2)
-with diag_title_col1:
-    st.markdown(f"### Filters with No Data for {trend_metric}")
-with diag_title_col2:
-    st.markdown(f"### Filters with No Data for {map_metric}")
+# diag_title_col1, diag_title_col2 = st.columns(2)
+# with diag_title_col1:
+#     st.markdown(f"### Filters with No Data for {trend_metric}")
+# with diag_title_col2:
+#     st.markdown(f"### Filters with No Data for {trend_metric}")
 
-diag_row1, diag_row2 = st.columns(2)
-with diag_row1:
-    st.markdown("**Line Plot**")
-    with st.expander("Show Neighborhoods"):
-        st.write(invalid_trend_neighborhoods)
-    with st.expander("Show Building Types"):
-        st.write(invalid_trend_building_types)
-with diag_row2:
-    st.markdown("**Map**")
-    with st.expander("Show Neighborhoods"):
-        st.write(invalid_map_neighborhoods)
-    with st.expander("Show Building Types"):
-        st.write(invalid_map_building_types)
+# diag_row1, diag_row2 = st.columns(2)
+# with diag_row1:
+#     st.markdown("**Line Plot**")
+#     with st.expander("Show Neighborhoods"):
+#         st.write(invalid_trend_neighborhoods)
+#     with st.expander("Show Building Types"):
+#         st.write(invalid_trend_building_types)
+# with diag_row2:
+#     st.markdown("**Map**")
+#     with st.expander("Show Neighborhoods"):
+#         st.write(invalid_map_neighborhoods)
+#     with st.expander("Show Building Types"):
+#         st.write(invalid_map_building_types)
 
 
 # -------------------- Map Selection --------------------

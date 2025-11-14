@@ -7,7 +7,7 @@ import streamlit as st
 from utils.dashboard_utils import apply_page_config
 from utils.data_utils import concurrent_buildings
 
-main_dataframe = concurrent_buildings()
+concurrent_dataframe = concurrent_buildings()
 apply_page_config()
 
 st.title("City of Chicago - Energy Dashboard")
@@ -69,55 +69,43 @@ with col1:
         "It aggregates and presents data on key metrics such as ENERGY STAR Scores, electricity use, and gas consumption, broken down by building type, neighborhood, and year."
     )
 
-    st.markdown("## Description")
-    st.markdown(
-        "- The City of Chicago requires large buildings to display energy rating placards, showing how efficiently each building uses energy. This project studies how those public ratings have affected building performance over time."
-    )
-    st.markdown(
-        "- By analyzing data from 2015–2024, we aim to see whether buildings have become more energy-efficient and reduced their greenhouse gas emissions since the placards were introduced in 2019."
-    )
-    st.markdown(
-        "- Our findings will help the City understand whether the rating system encourages building owners to improve energy efficiency, which can save money, cut emissions, and support Chicago’s climate goals."
-    )
+    st.markdown("""
+    ## Description
 
-    st.markdown("## Problem Statements")
-    st.markdown(
-        "- The City of Chicago wants to know whether its Energy Rating Placard program—which makes building energy efficiency publicly visible—has actually led to improvements in energy performance across buildings."
-    )
-    st.markdown(
-        "- To support this, we need to determine which building characteristics (e.g., size, type, energy source mix) are most strongly linked to performance improvements over time."
-    )
-    st.markdown(
-        "- We also want to predict which buildings are most likely to improve, so the City can better target outreach or incentives."
-    )
+    - The City of Chicago requires large buildings to display energy rating placards, showing how efficiently each building uses energy. This project studies how those public ratings have affected building performance over time.
+    - By analyzing data from 2015–2024, we aim to see whether buildings have become more energy-efficient and reduced their greenhouse gas emissions since the placards were introduced in 2019.
+    - Our findings will help the City understand whether the rating system encourages building owners to improve energy efficiency, which can save money, cut emissions, and support Chicago’s climate goals.
+    """)
 
-    st.markdown("## Data")
-    st.markdown(
-        "**Volume:** Covers roughly 10 years of data (2015–2024) for thousands of large buildings across Chicago that report energy use annually under the city’s Energy Benchmarking Ordinance."
-    )
-    st.markdown(
-        "**Type:** Structured, tabular data combining building characteristics (size, type, construction year, location) with annual performance metrics."
-    )
-    st.markdown(
-        "**Content:** Includes Energy Star scores, Site Energy Use Intensity (EUI), greenhouse gas emissions, electricity and natural gas consumption, and water use for each property."
-    )
-    st.markdown(
-        "**Other Details:** The dataset allows tracking the same building over time, enabling pre/post-placard comparison and modeling of improvement trends."
-    )
+    st.markdown("""
+    ## Problem Statements
+
+    - The City of Chicago wants to know whether its Energy Rating Placard program—which makes building energy efficiency publicly visible—has actually led to improvements in energy performance across buildings.
+    - To support this, we need to determine which building characteristics (e.g., size, type, energy source mix) are most strongly linked to performance improvements over time.
+    - We also want to predict which buildings are most likely to improve, so the City can better target outreach or incentives.
+    """)
+
+    st.markdown("# Data")
+    st.markdown("""
+    ### Dataset Overview
+
+    - **Volume:** Covers roughly 10 years of data (2015–2024) for thousands of large buildings across Chicago that report energy use annually under the city’s Energy Benchmarking Ordinance.
+    - **Type:** Structured, tabular data combining building characteristics (size, type, construction year, location) with annual performance metrics.
+    - **Content:** Includes Energy Star scores, Site Energy Use Intensity (EUI), greenhouse gas emissions, electricity and natural gas consumption, and water use for each property.
+    - **Other Details:** Enables tracking the same building over time, supporting pre/post-placard comparison and modeling of improvement trends.
+    """)
 
     st.markdown(
         "The final dataframe filters down data to only have concurrent buildings for the 10 year span"
     )
-    st.markdown("#### Definitions")
-    st.markdown(
-        "- **Chicago Energy Rating:** The zero-to-four-star Chicago Energy Rating assigned to the building in the shown Data Year. A building with zero stars did not submit a report, or did submit a report but was missing required information. All other buildings receive between one and four stars, with four stars reflecting the highest performance. Every building receives a Chicago Energy Rating Placard with this rating, which must be posted in a prominent location at the building. The rating must also be shared at the time of listing the building for sale or for lease. For more information, visit: www.ChicagoEnergyRating.org This column was added for the 2018 Data Year. It is blank for previous years."
-    )
-    st.markdown(
-        "- **ENERGY STAR Score**: 1-100 rating that assesses a property’s overall energy performance, based on national data to control for differences among climate, building uses, and operations. A score of 50 represents the national median.*"
-    )
-    st.markdown(
-        "- **Exempt From Chicago Energy Rating:** Shows whether the building is subject to the Chicago Energy Rating Ordinance. Some properties are required to submit energy benchmarking reports but are not subject to the requirements of the Chicago Energy Rating program. These buildings do not receive a Chicago Energy Rating, typically due to technical reasons. This column was added for the 2018 Data Year. It is blank for previous years."
-    )
+
+    st.markdown("""
+    #### Definitions
+
+    - **Chicago Energy Rating:** The zero-to-four-star Chicago Energy Rating assigned to the building in the shown Data Year. A building with zero stars did not submit a report, or did submit a report but was missing required information. All other buildings receive between one and four stars, with four stars reflecting the highest performance. Every building receives a Chicago Energy Rating Placard with this rating, which must be posted in a prominent location at the building. The rating must also be shared at the time of listing the building for sale or for lease. For more information, visit: www.ChicagoEnergyRating.org. This column was added for the 2018 Data Year. It is blank for previous years.
+    - **ENERGY STAR Score:** 1–100 rating that assesses a property’s overall energy performance, based on national data to control for differences among climate, building uses, and operations. A score of 50 represents the national median.
+    - **Exempt From Chicago Energy Rating:** Shows whether the building is subject to the Chicago Energy Rating Ordinance. Some properties are required to submit energy benchmarking reports but are not subject to the requirements of the Chicago Energy Rating program. These buildings do not receive a Chicago Energy Rating, typically due to technical reasons. This column was added for the 2018 Data Year. It is blank for previous years.
+    """)
 
 with col2:
     st.image(
@@ -144,9 +132,9 @@ with st.expander("Timeline of Reported Data"):
 
 st.divider()
 
-st.markdown("## Dataframe")
+st.markdown("## Concurrent Dataframe")
 
-st.dataframe(main_dataframe)
+st.dataframe(concurrent_dataframe)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

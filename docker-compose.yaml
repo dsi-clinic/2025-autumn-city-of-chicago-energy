@@ -16,3 +16,5 @@ services:
     # At least one of stdin_open or tty is required to make devcontainer work
     stdin_open: true
     tty: true
+    ports:
+      - "8501:8501"

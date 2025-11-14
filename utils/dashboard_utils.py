@@ -6,6 +6,8 @@ import altair as alt
 import geopandas as gpd
 import pandas as pd
 import streamlit as st
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 from utils.data_utils import concurrent_buildings, load_data, load_neighborhood_geojson
 from utils.plot_utils import aggregate_metric, plot_building_count_map, plot_choropleth
@@ -109,6 +111,23 @@ def cache_build_all_year_charts(
 
 
 # Graph Helper Functions #-------------------------------------------------------------------
+
+
+def style_matplotlib(fig: Figure, ax: Axes) -> None:
+    """Apply consistent dark theme styling to Matplotlib figures."""
+    # Figure and axes background
+    fig.patch.set_facecolor("#0E1117")
+    ax.set_facecolor("#0E1117")
+
+    # Tick labels and axis labels
+    ax.tick_params(colors="white")
+    ax.title.set_color("white")
+    ax.xaxis.label.set_color("white")
+    ax.yaxis.label.set_color("white")
+
+    # Spines (border)
+    for spine in ax.spines.values():
+        spine.set_color("white")
 
 
 def render_yearly_map(

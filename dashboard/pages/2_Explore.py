@@ -1,4 +1,4 @@
-"""Explore Page with Independent Dynamic Filters in 2x2 Grid Layout"""
+"""Exploratroy Analysis Page"""
 
 import time
 
@@ -11,6 +11,7 @@ from utils.dashboard_utils import (
     cache_geojson,
     metric_list,
     render_yearly_map,
+    style_matplotlib,
     year_list,
 )
 from utils.plot_utils import (
@@ -23,22 +24,15 @@ from utils.plot_utils import (
 # -------------------- Page Setup --------------------
 apply_page_config()
 start = time.time()
-st.title("Exploratory Dashboard with Independent Dynamic Filters")
+st.title("Exploratory Dashboard")
 
 # -------------------- Load Data --------------------
 full_data = cache_full_data()
 energy_data = cache_energy_data()
 geojson_data = cache_geojson()
 metrics_list = metric_list()
-
-# -------------------- Define Lists --------------------
-
-available_years = sorted(energy_data["Data Year"].dropna().unique())
-years_list = ["Average (All Years)"] + sorted(
-    [int(year) for year in available_years], reverse=True
-)
-years_list_n = year_list()
-# ------------------- Start Dashboard --------------------
+years_list = year_list()
+full_year_list = ["Average (All Years)"] + years_list
 
 # Ensure Community Area matches pri_neigh in geojson
 full_data["Community Area"] = (
@@ -48,6 +42,11 @@ full_data["Community Area"] = (
 energy_data["Community Area"] = (
     energy_data["Community Area"].astype(str).str.strip().str.title()
 )
+
+# ------------------- Start Dashboard --------------------
+
+# DATA COUNT PLOTS #-------------------------------------------------------------------
+
 # Log scale toggle
 log_scale = st.checkbox("Use Log Scale", value=False)
 
@@ -74,38 +73,36 @@ with col1:
     with ctrl3:
         selected_year = st.selectbox(
             "Current year:",
-            years_list_n,
+            years_list,
             index=st.session_state.current_index,
             key="year_selector",
         )
-        if selected_year != years_list_n[st.session_state.current_index]:
-            st.session_state.current_index = years_list_n.index(selected_year)
+        if selected_year != years_list[st.session_state.current_index]:
+            st.session_state.current_index = years_list.index(selected_year)
             st.session_state.playing = False
 
     animation_placeholder = st.empty()
 
     if st.session_state.playing:
         while st.session_state.playing and st.session_state.current_index < len(
-            years_list_n
+            years_list
         ):
-            current_year = years_list_n[st.session_state.current_index]
+            current_year = years_list[st.session_state.current_index]
             with animation_placeholder.container():
                 st.altair_chart(
                     render_yearly_map(current_year, geojson_data, full_data, log_scale),
                     use_container_width=True,
                 )
-                st.progress(st.session_state.current_index / (len(years_list_n) - 1))
-                st.caption(
-                    f"{st.session_state.current_index + 1} of {len(years_list_n)}"
-                )
+                st.progress(st.session_state.current_index / (len(years_list) - 1))
+                st.caption(f"{st.session_state.current_index + 1} of {len(years_list)}")
             time.sleep(1)
             st.session_state.current_index += 1
-            if st.session_state.current_index >= len(years_list_n):
+            if st.session_state.current_index >= len(years_list):
                 st.session_state.current_index = 0
         st.session_state.playing = False
         st.rerun()
     else:
-        current_year = years_list_n[st.session_state.current_index]
+        current_year = years_list[st.session_state.current_index]
         with animation_placeholder.container():
             st.altair_chart(
                 render_yearly_map(current_year, geojson_data, full_data, log_scale),
@@ -115,57 +112,14 @@ with col1:
 # --- Concurrent Buildings Static Map ---
 with col2:
     st.markdown("### Concurrent Buildings Count Over Time")
-    cur_year = st.selectbox("Select year:", years_list_n, key="year_select")
+    cur_year = st.selectbox("Select year:", years_list, key="year_select")
     st.altair_chart(
         render_yearly_map(cur_year, geojson_data, energy_data, log_scale),
         use_container_width=True,
     )
+# END OF DATA COUNT PLOTS #-------------------------------------------------------------------
 
-
-st.markdown("### Metric Exploration")
-st.markdown("#### Duel Metric Trends")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    selected1 = st.selectbox(
-        "Choose first metric:", metrics_list, key="trend_top_first"
-    )
-    fig1, ax1 = plot_trend_by_year(energy_data, [selected1], "mean")
-
-    # Styling: black background, white ticks
-    fig1.patch.set_facecolor("#0E1117")  # Figure background
-    ax1.set_facecolor("#0E1117")  # Axes background
-    ax1.tick_params(colors="white")  # Tick label color
-    ax1.title.set_color("white")  # Title color
-    ax1.xaxis.label.set_color("white")  # X-axis label color
-    ax1.yaxis.label.set_color("white")  # Y-axis label color
-    for spine in ax1.spines.values():  # Optional: white border
-        spine.set_color("white")
-
-    st.pyplot(fig1)
-
-with col2:
-    default_index = (metrics_list.index(selected1) + 1) % len(metrics_list)
-    selected2 = st.selectbox(
-        "Choose second metric:",
-        metrics_list,
-        index=default_index,
-        key="trend_top_second",
-    )
-    fig2, ax2 = plot_trend_by_year(energy_data, [selected2], "mean")
-
-    # Styling: black background, white ticks
-    fig2.patch.set_facecolor("#0E1117")
-    ax2.set_facecolor("#0E1117")
-    ax2.tick_params(colors="white")
-    ax2.title.set_color("white")
-    ax2.xaxis.label.set_color("white")
-    ax2.yaxis.label.set_color("white")
-    for spine in ax2.spines.values():
-        spine.set_color("white")
-
-    st.pyplot(fig2)
+# BAR CHART #-------------------------------------------------------------------
 
 st.markdown("#### Community Area per Average Metric")
 
@@ -189,31 +143,55 @@ fil = energy_data[energy_data["Community Area"] == select_neigh]
 # Plot the bar chart
 fig10, ax10 = plot_bar(
     data=fil,
-    x="Primary Property Type",
-    y=select_mec,
+    x=select_mec,
+    y="Primary Property Type",
     title=f"Average {select_mec} by Property Type in {select_neigh}",
-    rotate_xticks=90,
     show_values=True,
 )
-fig10.patch.set_facecolor("#0E1117")
-ax10.set_facecolor("#0E1117")
-ax10.tick_params(colors="white")
-ax10.title.set_color("white")
-ax10.xaxis.label.set_color("white")
-ax10.yaxis.label.set_color("white")
-
-for spine in ax10.spines.values():
-    spine.set_color("white")
 
 for container in ax10.containers:
     ax10.bar_label(container, fmt="%.0f", fontsize=9, padding=3, color="white")
 
+style_matplotlib(fig10, ax10)
 st.pyplot(fig10)
+
+# END OF BAR CHART #-------------------------------------------------------------------
+
+# DUEL METRIC PLOTS #-------------------------------------------------------------------
+
+st.markdown("### Metric Exploration")
+st.markdown("#### Duel Metric Trends")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    selected1 = st.selectbox(
+        "Choose first metric:", metrics_list, key="trend_top_first"
+    )
+    fig1, ax1 = plot_trend_by_year(energy_data, [selected1], "mean")
+    style_matplotlib(fig1, ax1)
+    st.pyplot(fig1)
+
+
+with col2:
+    default_index = (metrics_list.index(selected1) + 1) % len(metrics_list)
+    selected2 = st.selectbox(
+        "Choose second metric:",
+        metrics_list,
+        index=default_index,
+        key="trend_top_second",
+    )
+    fig2, ax2 = plot_trend_by_year(energy_data, [selected2], "mean")
+    style_matplotlib(fig2, ax2)
+    st.pyplot(fig2)
+
+
+# END OF DUEL METRIC PLOTS #-------------------------------------------------------------------
 
 
 st.divider()
 
-# -------------------- Layout: Controls --------------------
+# COMBO PLOTS #-------------------------------------------------------------------
 col1, col2 = st.columns(2)
 
 # --- Trend Line Plot Controls ---
@@ -257,14 +235,13 @@ with trend_row2[0]:
         "Building Type Selection", ["All"] + valid_trend_building_types
     )
 with trend_row2[1]:
-    trend_year = st.selectbox("Trend Year for Map", years_list, key="combo_year")
+    trend_year = st.selectbox("Trend Year for Map", full_year_list, key="combo_year")
 
-# -------------------- Layout: Visualizations --------------------
 col1, col2 = st.columns(2)
 
 # --- Trend Line Plot ---
 with col1:
-    st.markdown("### Trend Line Plot")
+    st.markdown("#### Metric Over Time Line Plot")
     trend_filtered_df = energy_data.copy()
     if trend_neighborhood != "All":
         trend_filtered_df = trend_filtered_df[
@@ -296,7 +273,7 @@ with col1:
 
 # --- Choropleth Map ---
 with col2:
-    st.markdown("### Choropleth Map")
+    st.markdown("#### Choropleth Map")
     map_filtered_df = energy_data.copy()
     if trend_neighborhood != "All":
         map_filtered_df = map_filtered_df[
@@ -315,70 +292,3 @@ with col2:
     agg_df = aggregate_metric(map_filtered_df, trend_metric)
     map_chart = plot_choropleth(geojson_data, agg_df, trend_metric, year=map_year_arg)
     st.altair_chart(map_chart, use_container_width=True)
-
-# -------------------- Layout: Diagnostics --------------------
-# diag_title_col1, diag_title_col2 = st.columns(2)
-# with diag_title_col1:
-#     st.markdown(f"### Filters with No Data for {trend_metric}")
-# with diag_title_col2:
-#     st.markdown(f"### Filters with No Data for {trend_metric}")
-
-# diag_row1, diag_row2 = st.columns(2)
-# with diag_row1:
-#     st.markdown("**Line Plot**")
-#     with st.expander("Show Neighborhoods"):
-#         st.write(invalid_trend_neighborhoods)
-#     with st.expander("Show Building Types"):
-#         st.write(invalid_trend_building_types)
-# with diag_row2:
-#     st.markdown("**Map**")
-#     with st.expander("Show Neighborhoods"):
-#         st.write(invalid_map_neighborhoods)
-#     with st.expander("Show Building Types"):
-#         st.write(invalid_map_building_types)
-
-
-# -------------------- Map Selection --------------------
-# st.subheader("Maps")
-
-# available_years = sorted(energy_data["Data Year"].dropna().unique())
-# year_options = ["Average (All Years)"] + sorted(
-#     [int(year) for year in available_years], reverse=True
-# )
-
-# with st.container():
-#     VarCol, BuildCol = st.columns(2)
-
-#     with VarCol:
-#         with st.container():
-#             col1, col2 = st.columns(2)
-
-#             with col1:
-#                 map_select = st.selectbox(
-#                     "Choose metric for map:", metrics_list, key="map_metric"
-#                 )
-#             with col2:
-#                 year_select = st.selectbox("Choose year:", year_options, key="year1")
-#                 year_arg = (
-#                     None if year_select == "Average (All Years)" else int(year_select)
-#                 )
-
-#         # Use cached chart if year is None, otherwise recompute chart using cached aggregation
-#         if year_arg is None:
-#             map_chart = all_year_charts[map_select]
-#         else:
-#             agg = agg_energy_data[map_select]  # reuse cached aggregation
-#             map_chart = plot_choropleth(geojson_data, agg, map_select, year_arg)
-#             st.write("making new graph")
-
-#         st.altair_chart(map_chart, width="stretch")
-
-#     with BuildCol:
-#         energy_data["Community Area"] = (
-#             energy_data["Community Area"].astype(str).str.strip().str.title()
-#         )
-#         map_build = plot_building_count_map(geojson_data, energy_data)
-
-#         st.altair_chart(map_build, width="stretch")
-
-# logging.debug(f"Render time for Explore: {time.time() - start:.2f} seconds")

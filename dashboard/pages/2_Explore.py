@@ -167,7 +167,7 @@ with col1:
     selected1 = st.selectbox(
         "Choose first metric:", metrics_list, key="trend_top_first"
     )
-    fig1, ax1 = plot_trend_by_year(energy_data, [selected1], "mean")
+    fig1, ax1 = plot_trend_by_year(energy_data, [selected1], "mean")[0]
     style_matplotlib(fig1, ax1)
     st.pyplot(fig1)
 
@@ -180,7 +180,7 @@ with col2:
         index=default_index,
         key="trend_top_second",
     )
-    fig2, ax2 = plot_trend_by_year(energy_data, [selected2], "mean")
+    fig2, ax2 = plot_trend_by_year(energy_data, [selected2], "mean")[0]
     style_matplotlib(fig2, ax2)
     st.pyplot(fig2)
 
@@ -255,7 +255,7 @@ with col1:
             trend_filtered_df["Primary Property Type"] == trend_building_type
         ]
 
-    fig1, ax1 = plot_trend_by_year(trend_filtered_df, [trend_metric], agg="mean")
+    fig1, ax1 = plot_trend_by_year(trend_filtered_df, [trend_metric], agg="mean")[0]
     title_parts = [f"{trend_metric} Over Time"]
     if trend_neighborhood != "All":
         title_parts.append(f"in {trend_neighborhood}")

@@ -115,21 +115,22 @@ def cache_build_all_year_charts(
 # Graph Helper Functions #-------------------------------------------------------------------
 
 
-def style_matplotlib(fig: Figure, ax: Axes) -> None:
+def style_matplotlib(fig: Figure, ax: Axes = None) -> None:
     """Apply consistent dark theme styling to Matplotlib figures."""
     # Figure and axes background
     fig.patch.set_facecolor("#0E1117")
-    ax.set_facecolor("#0E1117")
+    if ax is not None:
+        ax.set_facecolor("#0E1117")
 
-    # Tick labels and axis labels
-    ax.tick_params(colors="white")
-    ax.title.set_color("white")
-    ax.xaxis.label.set_color("white")
-    ax.yaxis.label.set_color("white")
+        # Tick labels and axis labels
+        ax.tick_params(colors="white")
+        ax.title.set_color("white")
+        ax.xaxis.label.set_color("white")
+        ax.yaxis.label.set_color("white")
 
-    # Spines (border)
-    for spine in ax.spines.values():
-        spine.set_color("white")
+        # Spines (border)
+        for spine in ax.spines.values():
+            spine.set_color("white")
 
 
 def render_yearly_map(

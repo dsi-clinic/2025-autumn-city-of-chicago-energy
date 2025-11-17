@@ -2,12 +2,20 @@
 
 import json
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from utils.settings import DATA_DIR
+
 logger = logging.getLogger(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 
 def clean_numeric(series: pd.Series) -> pd.Series:
@@ -23,7 +31,10 @@ def clean_numeric(series: pd.Series) -> pd.Series:
 
 def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
-    path = Path("/project") / "data" / "chicago_energy_benchmarking"
+    path = DATA_DIR / "chicago_energy_benchmarking"
+
+    if not path.exists():
+        path = Path("/project") / "data" / "chicago_energy_benchmarking"
 
     if not path.exists():
         raise FileNotFoundError(f"Data directory not found: {path}")
@@ -237,10 +248,34 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
 
     missing_vals = {"nan", "none", ""}
 
+    merge_to_other = {
+        "adult education",
+        "other - education",
+        "bank branch",
+        "other - public services",
+        "vehicle dealership",
+        "courthouse",
+        "financial office",
+        "automobile dealership",
+        "prison/incarceration",
+        "pre-school/daycare",
+        "repair services (vehicle, shoe, locksmith, etc.)",
+        "lodging",
+        "health care",
+        "convention center",
+        "outpatient rehabilitation/physical therapy",
+        "commerce de détail",
+        "urgent care/clinic/other outpatient",
+        "other - services",
+        "indoor arena",
+    }
+
     # Map each building ID to its valid property types
     type_map = df_copy.groupby("ID")["Primary Property Type"].apply(
         lambda x: [
-            v for v in x if pd.notna(v) and str(v).strip().lower() not in missing_vals
+            re.sub(r"\s+", " ", str(v)).strip().lower()
+            for v in x
+            if pd.notna(v) and str(v).strip().lower() not in missing_vals
         ]
     )
 
@@ -264,8 +299,30 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
             id_to_type[bid] = "multifamily housing"
 
         # Case 3: redundant duplicates like ['multifamily housing', 'multifamily housing']
-        elif lower_types == {"multifamily housing"}:
+        elif lower_types & {"multifamily housing"}:
             id_to_type[bid] = "multifamily housing"
+
+        # Case 5: mall types -> unify as 'mall'
+        if lower_types & {"enclosed mall", "strip mall", "other - mall"}:
+            id_to_type[bid] = "mall"
+
+        # Case 6: residential types -> unify as 'residential'
+        if lower_types & {"residential", "other - lodging/residential"}:
+            id_to_type[bid] = "residential"
+
+        # Case 7: hospital types -> unify as 'hospital'
+        if lower_types & {
+            "hospital (general medical & surgical)",
+            "other - specialty hospital",
+        }:
+            id_to_type[bid] = "hospital"
+
+        # Case 8: other - recreation -> recreation
+        if lower_types & {"other - recreation"}:
+            id_to_type[bid] = "recreation"
+
+        if lower_types & merge_to_other:
+            id_to_type[bid] = "other"
 
     # Apply replacements
     def replace_type(row: pd.Series) -> str:
@@ -281,5 +338,182 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
     return df_copy
 
 
+def covid_impact_category(
+    df: pd.DataFrame, property_col: str = "Primary Property Type", id_col: str = "ID"
+) -> pd.DataFrame:
+    """Assign each building a COVID impact category based on property type, without filtering by sample size.
+
+    Categories:
+        - Permanent: long-term reduction (remote work / downtown offices)
+        - Temporary/Rebounded: short-term dip & later rebound
+        - Stable/Increased: continuous or essential use
+        - Other: uncertain or mixed-use categories that don't clearly fit
+    """
+    energy_df = df.copy()
+
+    covid_mapping = {
+        # --- Permanent reductions ---
+        "office": "Permanent",
+        "financial office": "Permanent",
+        "bank branch": "Permanent",
+        "commercial": "Permanent",
+        # --- Temporary / Rebounded ---
+        "k-12 school": "Temporary/Rebounded",
+        "college/university": "Temporary/Rebounded",
+        "hotel": "Temporary/Rebounded",
+        "retail store": "Temporary/Rebounded",
+        "supermarket/grocery store": "Temporary/Rebounded",
+        "strip mall": "Temporary/Rebounded",
+        "mall": "Temporary/Rebounded",
+        "wholesale club/supercenter": "Temporary/Rebounded",
+        "movie theater": "Temporary/Rebounded",
+        "museum": "Temporary/Rebounded",
+        "performing arts": "Temporary/Rebounded",
+        "library": "Temporary/Rebounded",
+        "fitness center/health club/gym": "Temporary/Rebounded",
+        "indoor arena": "Temporary/Rebounded",
+        "courthouse": "Temporary/Rebounded",
+        "social/meeting hall": "Temporary/Rebounded",
+        "lifestyle center": "Temporary/Rebounded",
+        "convention center": "Temporary/Rebounded",
+        "adult education": "Temporary/Rebounded",
+        "pre-school/daycare": "Temporary/Rebounded",
+        "residence hall/dormitory": "Temporary/Rebounded",
+        "other - education": "Temporary/Rebounded",
+        "other - recreation": "Temporary/Rebounded",
+        "other - entertainment/public assembly": "Temporary/Rebounded",
+        "other - lodging/residential": "Temporary/Rebounded",
+        # --- Stable or Increased ---
+        "multifamily housing": "Stable/Increased",
+        "residential": "Stable/Increased",
+        "senior care community": "Stable/Increased",
+        "residential care facility": "Stable/Increased",
+        "hospital (general medical & surgical)": "Stable/Increased",
+        "other - specialty hospital": "Stable/Increased",
+        "health care": "Stable/Increased",
+        "medical office": "Stable/Increased",
+        "urgent care/clinic/other outpatient": "Stable/Increased",
+        "laboratory": "Stable/Increased",
+        "worship facility": "Stable/Increased",
+        "prison/incarceration": "Stable/Increased",
+        "repair services (vehicle, shoe, locksmith, etc.)": "Stable/Increased",
+        # --- Other (ambiguous or mixed) ---
+        "mixed use property": "Other",
+        "other": "Other",
+        "not available": "Other",
+        "other - services": "Other",
+        "commerce de détail": "Other",
+        "vehicle dealership": "Other",
+        "automobile dealership": "Other",
+        "outpatient rehabilitation/physical therapy": "Other",
+        "medical office building": "Other",
+        "lodging": "Other",
+    }
+
+    def categorize(prop: str | None) -> str:
+        key = str(prop).strip().lower()
+        return covid_mapping.get(key, "Other")  # default to "Other" if not in map
+
+    energy_df["COVID Impact Category"] = energy_df[property_col].apply(categorize)
+
+    logging.info("✅ COVID Impact Category assignment (with 'Other' group) complete.")
+    logging.info(
+        "Category counts:\n%s",
+        energy_df["COVID Impact Category"].value_counts().sort_index().to_string(),
+    )
+
+    return energy_df
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
+
+
+def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
+    """Summarize all relevant data for a given building ID.
+
+    - String columns: show unique values horizontally across all years.
+    - Numeric columns: show median values.
+    - Excludes redundant metadata columns like ID, Data Year, and Location.
+
+    Parameters
+    ----------
+    energy_df : pd.DataFrame
+        The full dataset.
+    building_id : str | int
+        The building ID to summarize.
+
+    Returns:
+    -------
+    dict
+        A dictionary summary of all relevant building information.
+    """
+    if "ID" not in energy_df.columns:
+        raise ValueError("The DataFrame must contain an 'ID' column.")
+
+    building_data = energy_df[energy_df["ID"] == building_id]
+    if building_data.empty:
+        logger.warning(f"No records found for building ID {building_id}")
+        return {}
+
+    summary = {"Building ID": building_id}
+
+    # Columns to skip
+    skip_cols = {"ID", "Data Year", "Location", "Latitude", "Longitude", "Row_ID"}
+
+    numeric_cols = [
+        c
+        for c in building_data.select_dtypes(include="number").columns
+        if c not in skip_cols
+    ]
+    non_numeric_cols = [
+        c
+        for c in building_data.select_dtypes(exclude="number").columns
+        if c not in skip_cols
+    ]
+
+    # Compute medians for numeric columns
+    for col in numeric_cols:
+        median_val = building_data[col].median(skipna=True)
+        summary[col] = round(median_val, 2) if pd.notna(median_val) else None
+
+    # Collect unique values for string columns
+    for col in non_numeric_cols:
+        unique_vals = sorted(
+            {
+                str(v).strip()
+                for v in building_data[col].dropna().unique()
+                if str(v).strip() != ""
+            }
+        )
+        summary[col] = unique_vals
+
+    # Log summary
+    logger.info("=" * 100)
+    logger.info(f"BUILDING SUMMARY — ID: {building_id}")
+    logger.info("=" * 100)
+
+    if "Data Year" in building_data.columns:
+        years = building_data["Data Year"].dropna().unique()
+        if len(years):
+            logger.info(f"Years Recorded: {years.min()} → {years.max()}")
+        logger.info("-" * 100)
+
+    # Display non-numeric summaries horizontally
+    for col in non_numeric_cols:
+        vals = summary[col]
+        if vals:
+            if len(vals) == 1:
+                logger.info(f"{col}: {vals[0]}")
+            else:
+                joined = "; ".join(vals)
+                logger.info(f"{col}: {joined}")
+    logger.info("-" * 100)
+
+    # Display numeric summaries
+    for col in numeric_cols:
+        val = summary[col]
+        logger.info(f"{col}: {val}")
+    logger.info("=" * 100)
+
+    return summary

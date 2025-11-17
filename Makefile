@@ -45,6 +45,9 @@ run-interactive: build-only
 run-notebooks: build-only
 	docker compose run --rm -p 8888:8888 -t $(mount_data) $(project_name) uv run jupyter lab --port=8888 --ip='*' --no-browser --allow-root --log-level=INFO
 
+run-streamlit: build-only
+	docker compose run --rm -p 8501:8501 -t $(mount_data) $(project_name) uv run streamlit run src/dashboard/Introduction.py --server.port=8501 --server.address=0.0.0.0
+
 test-pipeline: build-only
 	docker compose run --rm $(mount_data) $(project_name) uv run python src/utils/pipeline_example.py
 

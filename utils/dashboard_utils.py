@@ -30,13 +30,21 @@ def apply_page_config() -> None:
 @st.cache_data
 def cache_full_data() -> pd.DataFrame:
     """Caching main data"""
-    return load_data()
+    full_data = load_data()
+    full_data["Community Area"] = (
+        full_data["Community Area"].astype(str).str.strip().str.title()
+    )
+    return full_data
 
 
 @st.cache_data
 def cache_energy_data() -> pd.DataFrame:
     """Caching main data"""
-    return concurrent_buildings()
+    energy_data = concurrent_buildings()
+    energy_data["Community Area"] = (
+        energy_data["Community Area"].astype(str).str.strip().str.title()
+    )
+    return energy_data
 
 
 @st.cache_data

@@ -33,15 +33,6 @@ geojson_data = cache_geojson()
 metrics_list = metric_list()
 years_list, full_year_list = year_lists()
 
-# Ensure Community Area matches pri_neigh in geojson
-full_data["Community Area"] = (
-    full_data["Community Area"].astype(str).str.strip().str.title()
-)
-
-energy_data["Community Area"] = (
-    energy_data["Community Area"].astype(str).str.strip().str.title()
-)
-
 # ------------------- Start Dashboard --------------------
 
 # DATA COUNT PLOTS #-------------------------------------------------------------------

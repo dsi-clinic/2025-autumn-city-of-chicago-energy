@@ -610,7 +610,7 @@ def plot_metric_by_property(
     width: int = 600,
     height: int = 400,
 ) -> alt.Chart:
-    """Plot an aggregated energy metric (mean, median, etc.) over time by property type, with an optional policy marker (e.g. 2019 placard introduction).
+    """Plot an aggregated energy metric (mean, median, etc.) over time by type, with an optional policy marker (e.g. 2019 placard introduction).
 
     Parameters
     ----------
@@ -621,7 +621,7 @@ def plot_metric_by_property(
     agg_func : Callable, optional
         Aggregation function (e.g., pd.Series.mean, pd.Series.median). Defaults to median.
     property_col : str, optional
-        Column name for property type. Defaults to 'Primary Property Type'.
+        Column name for type. Defaults to 'Primary Property Type'.
     year_col : str, optional
         Column name for data year. Defaults to 'Data Year'.
     marker_year : int, optional
@@ -653,9 +653,9 @@ def plot_metric_by_property(
         .encode(
             x=alt.X(f"{year_col}:O", title="Year", sort="ascending"),
             y=alt.Y("Aggregated_Metric:Q", title=f"{agg_name.title()} {metric_col}"),
-            color=alt.Color(f"{property_col}:N", title="Property Type"),
+            color=alt.Color(f"{property_col}:N", title=property_col),
             tooltip=[
-                alt.Tooltip(property_col, title="Property Type"),
+                alt.Tooltip(property_col, title=property_col),
                 alt.Tooltip(year_col, title="Year"),
                 alt.Tooltip(
                     "Aggregated_Metric:Q",
@@ -693,7 +693,7 @@ def plot_metric_by_property(
         .properties(
             width=width,
             height=height,
-            title=f"{agg_name.title()} {metric_col} by Property Type ({df[year_col].min()}–{df[year_col].max()})",
+            title=f"{agg_name.title()} {metric_col} by {property_col} ({df[year_col].min()}–{df[year_col].max()})",
         )
         .interactive()
     )

@@ -12,7 +12,7 @@ from utils.dashboard_utils import (
     metric_list,
     render_yearly_map,
     style_matplotlib,
-    year_list,
+    year_lists,
 )
 from utils.plot_utils import (
     aggregate_metric,
@@ -31,8 +31,7 @@ full_data = cache_full_data()
 energy_data = cache_energy_data()
 geojson_data = cache_geojson()
 metrics_list = metric_list()
-years_list = year_list()
-full_year_list = ["Average (All Years)"] + years_list
+years_list, full_year_list = year_lists()
 
 # Ensure Community Area matches pri_neigh in geojson
 full_data["Community Area"] = (
@@ -188,6 +187,10 @@ with col2:
 
 # END OF DUEL METRIC PLOTS #-------------------------------------------------------------------
 
+# DUEL MAP PLOTS #-------------------------------------------------------------------
+
+
+# END OF DUEL MAP PLOTS #-------------------------------------------------------------------
 
 st.divider()
 
@@ -292,3 +295,70 @@ with col2:
     agg_df = aggregate_metric(map_filtered_df, trend_metric)
     map_chart = plot_choropleth(geojson_data, agg_df, trend_metric, year=map_year_arg)
     st.altair_chart(map_chart, use_container_width=True)
+
+# -------------------- Layout: Diagnostics --------------------
+# diag_title_col1, diag_title_col2 = st.columns(2)
+# with diag_title_col1:
+#     st.markdown(f"### Filters with No Data for {trend_metric}")
+# with diag_title_col2:
+#     st.markdown(f"### Filters with No Data for {trend_metric}")
+
+# diag_row1, diag_row2 = st.columns(2)
+# with diag_row1:
+#     st.markdown("**Line Plot**")
+#     with st.expander("Show Neighborhoods"):
+#         st.write(invalid_trend_neighborhoods)
+#     with st.expander("Show Building Types"):
+#         st.write(invalid_trend_building_types)
+# with diag_row2:
+#     st.markdown("**Map**")
+#     with st.expander("Show Neighborhoods"):
+#         st.write(invalid_map_neighborhoods)
+#     with st.expander("Show Building Types"):
+#         st.write(invalid_map_building_types)
+
+
+# -------------------- Map Selection --------------------
+# st.subheader("Maps")
+
+# available_years = sorted(energy_data["Data Year"].dropna().unique())
+# year_options = ["Average (All Years)"] + sorted(
+#     [int(year) for year in available_years], reverse=True
+# )
+
+# with st.container():
+#     VarCol, BuildCol = st.columns(2)
+
+#     with VarCol:
+#         with st.container():
+#             col1, col2 = st.columns(2)
+
+#             with col1:
+#                 map_select = st.selectbox(
+#                     "Choose metric for map:", metrics_list, key="map_metric"
+#                 )
+#             with col2:
+#                 year_select = st.selectbox("Choose year:", year_options, key="year1")
+#                 year_arg = (
+#                     None if year_select == "Average (All Years)" else int(year_select)
+#                 )
+
+#         # Use cached chart if year is None, otherwise recompute chart using cached aggregation
+#         if year_arg is None:
+#             map_chart = all_year_charts[map_select]
+#         else:
+#             agg = agg_energy_data[map_select]  # reuse cached aggregation
+#             map_chart = plot_choropleth(geojson_data, agg, map_select, year_arg)
+#             st.write("making new graph")
+
+#         st.altair_chart(map_chart, width="stretch")
+
+#     with BuildCol:
+#         energy_data["Community Area"] = (
+#             energy_data["Community Area"].astype(str).str.strip().str.title()
+#         )
+#         map_build = plot_building_count_map(geojson_data, energy_data)
+
+#         st.altair_chart(map_build, width="stretch")
+
+# logging.debug(f"Render time for Explore: {time.time() - start:.2f} seconds")

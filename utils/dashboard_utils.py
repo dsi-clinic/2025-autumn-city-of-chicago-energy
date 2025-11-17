@@ -39,12 +39,12 @@ def cache_energy_data() -> pd.DataFrame:
     return concurrent_buildings()
 
 
-energy_data = cache_energy_data()
-
-
 @st.cache_data
-def cache_geojson() -> dict:
-    """Caching geojson data"""
+def cache_geojson(tolerance: float = 0.00259) -> dict:
+    """Caching geojson data.
+
+    Default tolerance is 0.00259 from balancing from appearence and rendering time
+    """
     geojson_data = load_neighborhood_geojson(
         "/project/src/data/chicago_geo/neighborhood_chi.geojson"
     )
@@ -52,7 +52,7 @@ def cache_geojson() -> dict:
 
     # Simplify geometry in memory
     gdf["geometry"] = gdf["geometry"].simplify(
-        tolerance=0.00259, preserve_topology=True
+        tolerance=tolerance, preserve_topology=True
     )
 
     # Convert back to dict if needed downstream
@@ -79,12 +79,14 @@ def metric_list() -> list:
 
 
 @st.cache_data
-def year_list() -> list:
+def year_lists() -> list:
     """List of all years"""
+    energy_data = cache_energy_data()
     years_list = sorted(
         [int(year) for year in sorted(energy_data["Data Year"].dropna().unique())]
     )
-    return years_list
+    full_year_list = ["Average (All Years)"] + years_list
+    return years_list, full_year_list
 
 
 # Graph specific Dataframes #-------------------------------------------------------------------

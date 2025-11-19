@@ -6,6 +6,7 @@ import streamlit as st
 
 from utils.dashboard_utils import apply_page_config
 from utils.data_utils import concurrent_buildings
+from utils.settings import DATA_DIR
 
 concurrent_dataframe = concurrent_buildings()
 apply_page_config()
@@ -109,7 +110,7 @@ with col1:
 
 with col2:
     st.image(
-        "../data/image/Chicago_River_Aerial.jpg",
+        DATA_DIR / "image" / "Chicago_River_Aerial.jpg",
         caption="Chicago River Aerial View",
         use_container_width=True,
     )

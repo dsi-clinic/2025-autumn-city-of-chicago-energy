@@ -180,6 +180,27 @@ with col2:
 
 # DUEL MAP PLOTS #-------------------------------------------------------------------
 
+col1, col2 = st.columns(2)
+
+with col1:
+    dual_map_metric_one = st.selectbox(
+        "Choose first metric:", metrics_list, key="dual_map_one"
+    )
+    agg_df = aggregate_metric(energy_data, dual_map_metric_one)
+    fig1 = plot_choropleth(geojson_data, agg_df, dual_map_metric_one)
+    st.altair_chart(fig1, use_container_width=True)
+
+with col2:
+    default_index = (metrics_list.index(selected1) + 1) % len(metrics_list)
+    dual_map_metric_two = st.selectbox(
+        "Choose second metric:",
+        metrics_list,
+        index=default_index,
+        key="dual_map_two",
+    )
+    agg_df = aggregate_metric(energy_data, dual_map_metric_two)
+    fig2 = plot_choropleth(geojson_data, agg_df, dual_map_metric_two)
+    st.altair_chart(fig2, use_container_width=True)
 
 # END OF DUEL MAP PLOTS #-------------------------------------------------------------------
 
@@ -190,7 +211,7 @@ col1, col2 = st.columns(2)
 
 # --- Trend Line Plot Controls ---
 
-st.markdown("### Line and Map Plot Combo")
+st.markdown("### Line and Map Plot Combo for Metrics")
 trend_row1 = st.columns(2)
 trend_row2 = st.columns(2)
 
@@ -286,3 +307,36 @@ with col2:
     agg_df = aggregate_metric(map_filtered_df, trend_metric)
     map_chart = plot_choropleth(geojson_data, agg_df, trend_metric, year=map_year_arg)
     st.altair_chart(map_chart, use_container_width=True)
+# COMBO GRAPH END #-------------------------------------------------------------------
+
+st.divider()
+
+# ENERGY STAR MAP #-------------------------------------------------------------------
+st.markdown("### Energy Score Exploration")
+
+map_filtered_df = energy_data.copy()
+
+trend_year = st.selectbox("Trend Year for Map", full_year_list, key="energy_year")
+
+if trend_year == "Average (All Years)":
+    map_year_arg = None
+else:
+    map_year_arg = trend_year
+    map_filtered_df = map_filtered_df[map_filtered_df["Data Year"] == map_year_arg]
+
+col1, col2 = st.columns(2)
+with col1:
+    agg_df = aggregate_metric(map_filtered_df, "ENERGY STAR Score")
+
+    eng_map = plot_choropleth(
+        geojson_data, agg_df, "ENERGY STAR Score", year=map_year_arg
+    )
+    st.altair_chart(eng_map, use_container_width=True)
+
+with col2:
+    agg_df = aggregate_metric(map_filtered_df, "Chicago Energy Rating")
+
+    eng_map = plot_choropleth(
+        geojson_data, agg_df, "Chicago Energy Rating", year=map_year_arg
+    )
+    st.altair_chart(eng_map, use_container_width=True)

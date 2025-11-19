@@ -424,6 +424,7 @@ def covid_impact_category(
 
     return energy_df
 
+
 def assign_effective_year_built(df: pd.DataFrame) -> pd.DataFrame:
     """Assigns the 'Effective Year Built' for each building ID.
 
@@ -451,9 +452,9 @@ def assign_effective_year_built(df: pd.DataFrame) -> pd.DataFrame:
     df["Effective Year Built"] = df.groupby("ID")["Year Built"].transform(get_years)
     return df
 
+
 def categorize_time_built(df: pd.DataFrame) -> pd.date_range:
-    """
-    Categorize buildings into construction period bins based on their 'Year Built'.
+    """Categorize buildings into construction period bins based on their 'Year Built'.
 
     Filters out entries where 'Effective Year Built' is missing or equals "Multiple Years Built".
     Then assigns a 'Decade Built' category to each remaining row based on the value in the 'Year Built' column.
@@ -463,34 +464,36 @@ def categorize_time_built(df: pd.DataFrame) -> pd.date_range:
     df : pd.DataFrame
         Input DataFrame with columns 'Year Built' and 'Effective Year Built'.
 
-    Returns
+    Returns:
     -------
     pd.DataFrame
         Filtered DataFrame with an added 'Decade Built' categorical column.
     """
-
     is_valid = (df["Effective Year Built"].notna()) & (
         df["Effective Year Built"] != "Multiple Years Built"
     )
 
-    df = df[is_valid].copy()
+    valid_df = df[is_valid].copy()
     bins = [0, 1920, 1960, 1990, 2010, float("inf")]
     labels = ["Before 1920", "1920-1960", "1960-1990", "1990-2010", "After 2010"]
 
-    df["Decade Built"] = pd.cut(
-        df["Year Built"], bins=bins, labels=labels, right=False, include_lowest=True
+    valid_df["Decade Built"] = pd.cut(
+        valid_df["Year Built"],
+        bins=bins,
+        labels=labels,
+        right=False,
+        include_lowest=True,
     )
 
-    return df
+    return valid_df
+
 
 def prepare_persistence(
     df: pd.DataFrame,
     decade_built_col: str = "Decade Built",
-    site_eui_col: str = "Site EUI (kBtu/sq ft)"
+    site_eui_col: str = "Site EUI (kBtu/sq ft)",
 ) -> pd.DataFrame:
-    """
-    Prepare a DataFrame for energy persistence analysis by calculating year-to-year changes
-    and aligning consecutive changes for comparison.
+    """Prepare a DataFrame for energy persistence analysis by calculating year-to-year changes and aligning consecutive changes for comparison.
 
     The function filters and cleans input data, computes the year-over-year change in energy use (Delta)
     for each building, then aligns these changes to compare consecutive time intervals. The columns for
@@ -505,7 +508,7 @@ def prepare_persistence(
     site_eui_col : str, optional
         Name of the column with site energy use values (default is 'Site EUI (kBtu/sq ft)').
 
-    Returns
+    Returns:
     -------
     pd.DataFrame
         A DataFrame containing only valid rows, with columns for year-over-year energy change ('Delta')
@@ -537,7 +540,6 @@ def prepare_persistence(
     )
 
     return df_lagged
-
 
 
 if __name__ == "__main__":

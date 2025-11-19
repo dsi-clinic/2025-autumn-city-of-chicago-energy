@@ -1,8 +1,16 @@
+"""Han Test Page"""
+
 import streamlit as st
-import numpy as np
-import pandas as pd
-from utils.plot_utils import plot_energy_persistence_chart  
-from utils.data_utils import clean_property_type, concurrent_buildings, load_data, assign_effective_year_built, categorize_time_built, prepare_persistence
+
+from utils.data_utils import (
+    assign_effective_year_built,
+    categorize_time_built,
+    clean_property_type,
+    concurrent_buildings,
+    load_data,
+    prepare_persistence,
+)
+from utils.plot_utils import plot_energy_persistence_chart
 
 st.title("Energy Persistence Visualization")
 
@@ -21,7 +29,7 @@ fig = plot_energy_persistence_chart(
     id_col="ID",
     year_col="Data Year",
     delta_col="Delta",
-    delta_next_col="Delta_next"
+    delta_next_col="Delta_next",
 )
 
-st.altair_chart(fig) 
+st.altair_chart(fig)

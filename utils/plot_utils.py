@@ -169,6 +169,63 @@ def plot_bar(
     return fig, ax
 
 
+def plot_delta_divergence(
+    df: pd.DataFrame,
+    ptype: str,
+    year_before: int,
+    year_after: int,
+    eui_col: str = "Weather Normalized Site EUI (kBtu/sq ft)",
+    property_col: str = "Primary Property Type",
+    name_col: str = "Property Name",
+) -> alt.Chart:
+    """Interactive Altair bar chart showing ΔEUI between two years for a given property type.
+
+    Tooltip shows: Building ID, Property Name, EUI before/after, ΔEUI.
+    """
+    df_type = df[df[property_col].str.lower() == ptype.lower()].copy()
+    df_subset = df_type[df_type["Data Year"].isin([year_before, year_after])]
+    df_subset = df_subset[["ID", name_col, "Data Year", eui_col]].copy()
+
+    pivot = df_subset.pivot_table(
+        index=["ID", name_col], columns="Data Year", values=eui_col
+    ).dropna(subset=[year_before, year_after])
+
+    pivot.columns = pivot.columns.astype(str)
+    pivot = pivot.reset_index()
+    before_str = str(year_before)
+    after_str = str(year_after)
+    pivot["delta"] = pivot[after_str] - pivot[before_str]
+
+    pivot = pivot.sort_values("delta").reset_index(drop=True)
+    pivot["xpos"] = pivot.index
+    pivot["color"] = pivot["delta"].apply(lambda x: "red" if x > 0 else "blue")
+
+    chart = (
+        alt.Chart(pivot)
+        .mark_bar()
+        .encode(
+            x=alt.X("xpos:O", title="Buildings (sorted by ΔEUI)"),
+            y=alt.Y("delta:Q", title=f"Δ {eui_col}"),
+            color=alt.Color("color:N", scale=None),
+            tooltip=[
+                alt.Tooltip("ID:N", title="Building ID"),
+                alt.Tooltip(name_col + ":N", title="Property Name"),
+                alt.Tooltip(before_str + ":Q", title=f"EUI {year_before}"),
+                alt.Tooltip(after_str + ":Q", title=f"EUI {year_after}"),
+                alt.Tooltip("delta:Q", title="ΔEUI"),
+            ],
+        )
+        .properties(
+            width=850,
+            height=350,
+            title=f"Divergence of ΔEUI for {ptype.title()} Buildings ({year_after} – {year_before})",
+        )
+        .interactive()
+    )
+
+    return chart
+
+
 def plot_building_energy_deltas(
     pivot_df: pd.DataFrame,
     metric_name: str = "Energy Use",
@@ -706,6 +763,83 @@ def plot_did_trend(
         title=title,
         width=500,
         height=300,
+    )
+
+    return chart
+
+
+def plot_delta_kernel_density(
+    df: pd.DataFrame,
+    property_type: str,
+    metric_col: str = "Weather Normalized Site EUI (kBtu/sq ft)",
+    clip_range: int = 200,
+    width: int = 650,
+    height: int = 350,
+) -> alt.Chart:
+    """Interactive KDE distribution plot of Δ metric (year-over-year difference), comparing Pre-2019 vs Post-2019 periods for a selected property type.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Full energy dataset.
+    property_type : str
+        Building type to filter (e.g., "office", "multifamily housing").
+    metric_col : str
+        Column name of the metric to compute Δ from.
+    clip_range : int
+        Range to clip extreme values for readability.
+    width : int
+        Chart width.
+    height : int
+        Chart height.
+
+    Returns:
+    -------
+    alt.Chart
+        Interactive KDE plot.
+    """
+    data = df[df["Primary Property Type"].str.lower() == property_type.lower()].copy()
+
+    if data.empty:
+        raise ValueError(f"No buildings found for property type '{property_type}'")
+
+    policy_year = 2019
+    data = data.sort_values(["ID", "Data Year"])
+    data["Delta"] = data.groupby("ID")[metric_col].diff()
+    data = data.dropna(subset=["Delta"])
+    data["Period"] = data["Data Year"].apply(
+        lambda x: "Pre-2019" if x < policy_year else "Post-2019"
+    )
+
+    data["Delta_clipped"] = data["Delta"].clip(-clip_range, clip_range)
+    zoom = alt.selection_interval(bind="scales")
+
+    base = alt.Chart(data).transform_density(
+        density="Delta_clipped",
+        groupby=["Period"],
+        as_=["Delta", "Density"],
+        extent=[-clip_range, clip_range],
+        steps=300,
+    )
+
+    chart = (
+        base.mark_line()
+        .encode(
+            x=alt.X("Delta:Q", title=f"Δ {metric_col}"),
+            y=alt.Y("Density:Q", title="Density"),
+            color=alt.Color("Period:N", scale=alt.Scale(scheme="tableau10")),
+            tooltip=[
+                alt.Tooltip("Period:N", title="Period"),
+                alt.Tooltip("Delta:Q", title="Δ Metric", format=".2f"),
+                alt.Tooltip("Density:Q", title="Density", format=".4f"),
+            ],
+        )
+        .add_params(zoom)
+        .properties(
+            title=f"Shift in Δ Distribution for {property_type.title()} Buildings (Pre vs Post 2019)",
+            width=width,
+            height=height,
+        )
     )
 
     return chart

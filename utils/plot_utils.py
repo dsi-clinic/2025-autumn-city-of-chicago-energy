@@ -1128,6 +1128,206 @@ def plot_energy_persistence_by_year(
 
     return final_chart.interactive()
 
+def plot_energy_persistence_by_year(
+    df_lagged: pd.DataFrame,
+    property_col: str = "Primary Property Type",
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+    delta_col: str = "Delta",
+    delta_next_col: str = "Delta_next",
+    start_year: int = 2017,
+    end_year: int = 2023,
+    width: int = 320,
+    height: int = 320,
+) -> alt.Chart:
+    """Create a 2×3 grid of scatter plots showing Δ N→N+1 vs Δ N+1→N+2 per base year N.
+
+    Each dot = building; color = property type; regression lines per property type per year.
+    If fewer than 6 years exist, blank placeholders fill remaining cells for layout balance.
+    """
+    data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
+    data["N_year"] = data[year_col].astype(int) - 1
+
+    data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
+
+    years = sorted(data["N_year"].unique().tolist())
+
+    type_select = alt.selection_point(
+        fields=[property_col],
+        bind=alt.binding_select(
+            options=sorted(data[property_col].unique().tolist()),
+            name="Property Type: ",
+        ),
+        empty="all",
+    )
+
+    def make_chart(year: int) -> alt.Chart:
+        df_year = data[data["N_year"] == year]
+        if df_year.empty:
+            return alt.Chart().mark_text(text="").properties(width=width, height=height)
+        scatter = (
+            alt.Chart(df_year)
+            .mark_circle(size=55)
+            .encode(
+                x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
+                y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
+                color=alt.condition(
+                    type_select, f"{property_col}:N", alt.value("lightgray")
+                ),
+                opacity=alt.condition(type_select, alt.value(0.8), alt.value(0.15)),
+                tooltip=[
+                    id_col,
+                    property_col,
+                    year_col,
+                    alt.Tooltip(f"{delta_col}:Q", format=".2f"),
+                    alt.Tooltip(f"{delta_next_col}:Q", format=".2f"),
+                ],
+            )
+            .add_params(type_select)
+            .properties(width=width, height=height, title=str(year))
+        )
+        reg = (
+            alt.Chart(df_year)
+            .transform_regression(delta_col, delta_next_col, groupby=[property_col])
+            .mark_line(size=2)
+            .encode(
+                x=f"{delta_col}:Q",
+                y=f"{delta_next_col}:Q",
+                color=f"{property_col}:N",
+                opacity=alt.condition(type_select, alt.value(1), alt.value(0.2)),
+            )
+        )
+        return scatter + reg
+
+    grid_years = [
+        years[0:3],
+        years[3:5],
+    ]
+
+    row_n = 3
+
+    for row in grid_years:
+        while len(row) < row_n:
+            row.append(None)
+
+    rows = []
+    for row_years in grid_years:
+        charts = [
+            make_chart(y)
+            if y is not None
+            else alt.Chart().mark_text(text="").properties(width=width, height=height)
+            for y in row_years
+        ]
+        rows.append(alt.hconcat(*charts))
+
+    final_chart = (
+        alt.vconcat(*rows)
+        .resolve_scale(x="shared", y="shared")
+        .properties(
+            title=alt.TitleParams(
+                text="Energy-Change Persistence by Base Year N (2017–2023)",
+                subtitle=[
+                    "Each dot = building’s Δ N→N+1 vs Δ N+1→N+2; lines = trend within property type"
+                ],
+            )
+        )
+    )
+
+    return final_chart.interactive()
+
+def plot_energy_persistence_rows(
+    df_lagged: pd.DataFrame,
+    property_col: str = "Primary Property Type",
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+    delta_col: str = "Delta",
+    delta_next_col: str = "Delta_next",
+    start_year: int = 2017,
+    end_year: int = 2023,
+    width: int = 320,
+    height: int = 320,
+    selected_category: str = None,
+) -> list[alt.HConcatChart]:
+    """Return a list of row charts (each row is an hconcat of years)."""
+
+    data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
+    if selected_category is not None:
+        data = data[data[property_col] == selected_category]
+    data["N_year"] = data[year_col].astype(int) - 1
+    data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
+
+    years = sorted(data["N_year"].unique().tolist())
+    if not years:
+        return []
+
+    type_select = alt.selection_point(
+        fields=[property_col],
+        empty="all",
+    )
+
+    def make_chart(year: int) -> alt.Chart:
+        df_year = data[data["N_year"] == year]
+        if df_year.empty:
+            return alt.Chart().mark_text(text="").properties(width=width, height=height)
+
+        scatter = (
+            alt.Chart(df_year)
+            .mark_circle(size=55)
+            .encode(
+                x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
+                y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
+                color=alt.condition(type_select, f"{property_col}:N", alt.value("lightgray")),
+                opacity=alt.condition(type_select, alt.value(0.8), alt.value(0.15)),
+                tooltip=[
+                    id_col,
+                    property_col,
+                    year_col,
+                    alt.Tooltip(f"{delta_col}:Q", format=".2f"),
+                    alt.Tooltip(f"{delta_next_col}:Q", format=".2f"),
+                ],
+            )
+            .add_params(type_select)
+            .properties(width=width, height=height, title=str(year))
+        )
+
+        reg = (
+            alt.Chart(df_year)
+            .transform_regression(delta_col, delta_next_col, groupby=[property_col])
+            .mark_line(size=2)
+            .encode(
+                x=f"{delta_col}:Q",
+                y=f"{delta_next_col}:Q",
+                color=f"{property_col}:N",
+                opacity=alt.condition(type_select, alt.value(1), alt.value(0.2)),
+            )
+        )
+
+        return scatter + reg
+
+    # Build year grid (same as before)
+    grid_years = [
+        years[0:3],
+        years[3:5],
+    ]
+    row_n = 3
+    for row in grid_years:
+        while len(row) < row_n:
+            row.append(None)
+
+    rows = []
+    for row_years in grid_years:
+        charts = [
+            make_chart(y)
+            if y is not None
+            else alt.Chart().mark_text(text="").properties(width=width, height=height)
+            for y in row_years
+        ]
+        rows.append(
+            alt.hconcat(*charts).resolve_scale(x="shared", y="shared")
+        )
+
+    return rows
+
 
 # ----------Spatial Mapping-----------
 

@@ -483,7 +483,7 @@ def categorize_time_built(df: pd.DataFrame) -> pd.date_range:
     bins = [0, 1920, 1960, 1990, 2010, float("inf")]
     labels = ["Before 1920", "1920-1960", "1960-1990", "1990-2010", "After 2010"]
 
-    valid_df["Decade Built"] = pd.cut(
+    valid_df["Time Built"] = pd.cut(
         valid_df["Year Built"],
         bins=bins,
         labels=labels,
@@ -496,7 +496,7 @@ def categorize_time_built(df: pd.DataFrame) -> pd.date_range:
 
 def prepare_persistence(
     df: pd.DataFrame,
-    decade_built_col: str = "Decade Built",
+    decade_built_col: str = "Time Built",
     site_eui_col: str = "Site EUI (kBtu/sq ft)",
 ) -> pd.DataFrame:
     """Prepare a DataFrame for energy persistence analysis by calculating year-to-year changes and aligning consecutive changes for comparison.

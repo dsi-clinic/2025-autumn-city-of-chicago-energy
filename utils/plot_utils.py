@@ -1128,6 +1128,7 @@ def plot_energy_persistence_by_year(
 
     return final_chart.interactive()
 
+
 def plot_energy_persistence_by_year(
     df_lagged: pd.DataFrame,
     property_col: str = "Primary Property Type",
@@ -1235,6 +1236,7 @@ def plot_energy_persistence_by_year(
 
     return final_chart.interactive()
 
+
 def plot_energy_persistence_rows(
     df_lagged: pd.DataFrame,
     property_col: str = "Primary Property Type",
@@ -1249,7 +1251,6 @@ def plot_energy_persistence_rows(
     selected_category: str = None,
 ) -> list[alt.HConcatChart]:
     """Return a list of row charts (each row is an hconcat of years)."""
-
     data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
     if selected_category is not None:
         data = data[data[property_col] == selected_category]
@@ -1276,7 +1277,9 @@ def plot_energy_persistence_rows(
             .encode(
                 x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
                 y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
-                color=alt.condition(type_select, f"{property_col}:N", alt.value("lightgray")),
+                color=alt.condition(
+                    type_select, f"{property_col}:N", alt.value("lightgray")
+                ),
                 opacity=alt.condition(type_select, alt.value(0.8), alt.value(0.15)),
                 tooltip=[
                     id_col,
@@ -1322,9 +1325,7 @@ def plot_energy_persistence_rows(
             else alt.Chart().mark_text(text="").properties(width=width, height=height)
             for y in row_years
         ]
-        rows.append(
-            alt.hconcat(*charts).resolve_scale(x="shared", y="shared")
-        )
+        rows.append(alt.hconcat(*charts).resolve_scale(x="shared", y="shared"))
 
     return rows
 

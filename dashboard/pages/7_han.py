@@ -1,7 +1,6 @@
 """Han Test Page"""
 
 import streamlit as st
-import altair as alt
 
 from utils.data_utils import (
     assign_effective_year_built,
@@ -40,13 +39,17 @@ string_columns = ["Time Built", "Primary Property Type", "Community Area"]
 category_col = st.selectbox(
     "Select category for Building Classification",
     options=string_columns,
-    index=string_columns.index("Decade Built") if "Decade Built" in string_columns else 0
+    index=string_columns.index("Decade Built")
+    if "Decade Built" in string_columns
+    else 0,
 )
 
 site_eui_col = st.selectbox(
     "Select column for Energy Metric",
     options=variables,
-    index=variables.index("Site EUI (kBtu/sq ft)") if "Site EUI (kBtu/sq ft)" in variables else 0
+    index=variables.index("Site EUI (kBtu/sq ft)")
+    if "Site EUI (kBtu/sq ft)" in variables
+    else 0,
 )
 
 df_lagged = prepare_persistence(
@@ -59,14 +62,14 @@ options = sorted(df_lagged[category_col].unique().tolist())
 selected_category = st.selectbox(category_col, options)
 rows = plot_energy_persistence_rows(
     df_lagged=df_lagged,
-    property_col=category_col,  
+    property_col=category_col,
     id_col="ID",
     year_col="Data Year",
-    delta_col="Delta",          
-    delta_next_col="Delta_next",  
+    delta_col="Delta",
+    delta_next_col="Delta_next",
     start_year=2017,
     end_year=2023,
-    selected_category= selected_category,
+    selected_category=selected_category,
 )
 
 for row_chart in rows:

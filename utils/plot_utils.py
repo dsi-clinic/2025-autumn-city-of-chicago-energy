@@ -9,6 +9,7 @@ It includes reusable functions for comparing variable distributions before and a
 """
 
 import logging
+import math
 import re
 import warnings
 from collections.abc import Callable, Iterable
@@ -167,6 +168,84 @@ def plot_bar(
 
     fig.tight_layout()
     return fig, ax
+
+
+def plot_delta_divergence(
+    df: pd.DataFrame,
+    ptype: str,
+    year_before: int,
+    year_after: int,
+    eui_col: str = "Weather Normalized Site EUI (kBtu/sq ft)",
+    property_col: str = "Primary Property Type",
+    name_col: str = "Property Name",
+) -> alt.Chart:
+    """Interactive Altair bar chart showing ΔEUI between two years for a given property type.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Full dataset containing building-level annual EUI values.
+    ptype : str
+        Target property type to filter.
+    year_before : int
+        The baseline year for comparison.
+    year_after : int
+        The comparison year for measuring change.
+    eui_col : str, default "Weather Normalized Site EUI (kBtu/sq ft)"
+        Column name containing EUI values.
+    property_col : str, default "Primary Property Type"
+        Column identifying property type for filtering.
+    name_col : str, default "Property Name"
+        Column for building names to display in tooltips.
+
+    Returns:
+    -------
+    alt.Chart
+        An interactive Altair bar chart visualizing ΔEUI sorted by magnitude,
+        with hover tooltips showing building ID, name, EUI before/after, and ΔEUI.
+    """
+    df_type = df[df[property_col].str.lower() == ptype.lower()].copy()
+    df_subset = df_type[df_type["Data Year"].isin([year_before, year_after])]
+    df_subset = df_subset[["ID", name_col, "Data Year", eui_col]].copy()
+
+    pivot = df_subset.pivot_table(
+        index=["ID", name_col], columns="Data Year", values=eui_col
+    ).dropna(subset=[year_before, year_after])
+
+    pivot.columns = pivot.columns.astype(str)
+    pivot = pivot.reset_index()
+    before_str = str(year_before)
+    after_str = str(year_after)
+    pivot["delta"] = pivot[after_str] - pivot[before_str]
+
+    pivot = pivot.sort_values("delta").reset_index(drop=True)
+    pivot["xpos"] = pivot.index
+    pivot["color"] = pivot["delta"].apply(lambda x: "red" if x > 0 else "blue")
+
+    chart = (
+        alt.Chart(pivot)
+        .mark_bar()
+        .encode(
+            x=alt.X("xpos:O", title="Buildings (sorted by ΔEUI)"),
+            y=alt.Y("delta:Q", title=f"Δ {eui_col}"),
+            color=alt.Color("color:N", scale=None),
+            tooltip=[
+                alt.Tooltip("ID:N", title="Building ID"),
+                alt.Tooltip(name_col + ":N", title="Property Name"),
+                alt.Tooltip(before_str + ":Q", title=f"EUI {year_before}"),
+                alt.Tooltip(after_str + ":Q", title=f"EUI {year_after}"),
+                alt.Tooltip("delta:Q", title="ΔEUI"),
+            ],
+        )
+        .properties(
+            width=850,
+            height=350,
+            title=f"Divergence of ΔEUI for {ptype.title()} Buildings ({year_after} – {year_before})",
+        )
+        .interactive()
+    )
+
+    return chart
 
 
 def plot_building_energy_deltas(
@@ -829,129 +908,225 @@ def plot_did_trend(
     return chart
 
 
+def plot_delta_kernel_density(
+    df: pd.DataFrame,
+    property_type: str,
+    metric_col: str = "Weather Normalized Site EUI (kBtu/sq ft)",
+    clip_range: int = 200,
+    width: int = 650,
+    height: int = 350,
+) -> alt.Chart:
+    """Interactive KDE distribution plot of Δ metric (year-over-year difference), comparing Pre-2019 vs Post-2019 periods for a selected property type.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Full energy dataset.
+    property_type : str
+        Building type to filter (e.g., "office", "multifamily housing").
+    metric_col : str
+        Column name of the metric to compute Δ from.
+    clip_range : int
+        Range to clip extreme values for readability.
+    width : int
+        Chart width.
+    height : int
+        Chart height.
+
+    Returns:
+    -------
+    alt.Chart
+        Interactive KDE plot.
+    """
+    data = df[df["Primary Property Type"].str.lower() == property_type.lower()].copy()
+
+    if data.empty:
+        raise ValueError(f"No buildings found for property type '{property_type}'")
+
+    policy_year = 2019
+    data = data.sort_values(["ID", "Data Year"])
+    data["Delta"] = data.groupby("ID")[metric_col].diff()
+    data = data.dropna(subset=["Delta"])
+    data["Period"] = data["Data Year"].apply(
+        lambda x: "Pre-2019" if x < policy_year else "Post-2019"
+    )
+
+    data["Delta_clipped"] = data["Delta"].clip(-clip_range, clip_range)
+    zoom = alt.selection_interval(bind="scales")
+
+    base = alt.Chart(data).transform_density(
+        density="Delta_clipped",
+        groupby=["Period"],
+        as_=["Delta", "Density"],
+        extent=[-clip_range, clip_range],
+        steps=300,
+    )
+
+    chart = (
+        base.mark_line()
+        .encode(
+            x=alt.X("Delta:Q", title=f"Δ {metric_col}"),
+            y=alt.Y("Density:Q", title="Density"),
+            color=alt.Color("Period:N", scale=alt.Scale(scheme="tableau10")),
+            tooltip=[
+                alt.Tooltip("Period:N", title="Period"),
+                alt.Tooltip("Delta:Q", title="Δ Metric", format=".2f"),
+                alt.Tooltip("Density:Q", title="Density", format=".4f"),
+            ],
+        )
+        .add_params(zoom)
+        .properties(
+            title=f"Shift in Δ Distribution for {property_type.title()} Buildings (Pre vs Post 2019)",
+            width=width,
+            height=height,
+        )
+    )
+
+    return chart
+
+
 # ----------Regression Line plots----------
 
 
-def plot_energy_persistence_chart(
+def plot_energy_persistence_by_year(
     df_lagged: pd.DataFrame,
     property_col: str = "Primary Property Type",
     id_col: str = "ID",
     year_col: str = "Data Year",
     delta_col: str = "Delta",
     delta_next_col: str = "Delta_next",
-    marker_year: int = 2019,
-    width: int = 350,
-    height: int = 350,
+    start_year: int = 2017,
+    end_year: int = 2023,
+    width: int = 320,
+    height: int = 320,
 ) -> alt.Chart:
-    """Create an interactive scatter plot showing persistence of energy-use change (Δₜ → Δₜ₊₁) for each building, faceted by pre/post marker year.
+    """Create a 2×3 grid of scatter plots showing Δ N→N+1 vs Δ N+1→N+2 per base year N.
 
     Parameters
     ----------
     df_lagged : pd.DataFrame
-        DataFrame containing at least the columns:
-        [ID, Primary Property Type, Data Year, Delta, Delta_next].
-    property_col : str, default="Primary Property Type"
-        Column name for property type.
-    id_col : str, default="ID"
-        Unique building identifier column.
-    year_col : str, default="Data Year"
-        Column for reporting year.
-    delta_col : str, default="Delta"
-        Column for Δ Year N→N+1.
-    delta_next_col : str, default="Delta_next"
-        Column for Δ Year N+1→N+2.
-    marker_year : int, default=2019
-        Year dividing pre/post-placard comparison.
-    width : int, default=350
-        Width per facet.
-    height : int, default=350
-        Height per facet.
+        DataFrame containing lagged Δ values, where each row corresponds to a building-year
+        and includes Δ (N→N+1) and Δ_next (N+1→N+2).
+    property_col : str, default "Primary Property Type"
+        Column name indicating the property type used for coloring and filtering.
+    id_col : str, default "ID"
+        Column identifying the building (shown in tooltip).
+    year_col : str, default "Data Year"
+        Column indicating the reference year used to compute lagged differences.
+        The base year N is inferred as (year_col - 1).
+    delta_col : str, default "Delta"
+        Column for ΔEUI from year N→N+1.
+    delta_next_col : str, default "Delta_next"
+        Column for ΔEUI from year N+1→N+2.
+    start_year : int, default 2017
+        Earliest base year N to include in the grid.
+    end_year : int, default 2023
+        Latest base year N to include in the grid.
+    width : int, default 320
+        Width of each subplot.
+    height : int, default 320
+        Height of each subplot.
 
     Returns:
     -------
     alt.Chart
-        Interactive Altair facet chart comparing persistence before/after marker year.
+        A vertically concatenated grid (2×3) of interactive Altair scatter plots with:
+        - Dots representing buildings
+        - Property-type color encoding
+        - Per-type regression trend lines
+        - Dropdown selector for property type
+        - Shared axes across plots
     """
-    # Add pre/post marker period
-    df_lagged = df_lagged.copy()
-    df_lagged["Period"] = df_lagged[year_col].apply(
-        lambda y: f"Pre-{marker_year}" if y < marker_year else f"Post-{marker_year}"
-    )
+    data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
+    data["N_year"] = data[year_col].astype(int) - 1
 
-    # Dropdown selector for property type
+    data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
+
+    years = sorted(data["N_year"].unique().tolist())
+
     type_select = alt.selection_point(
         fields=[property_col],
         bind=alt.binding_select(
-            options=sorted(df_lagged[property_col].unique().tolist()),
+            options=sorted(data[property_col].unique().tolist()),
             name="Property Type: ",
         ),
         empty="all",
     )
 
-    # Scatter points
-    scatter = (
-        alt.Chart(df_lagged)
-        .mark_circle(size=55)
-        .encode(
-            x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
-            y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
-            color=alt.condition(
-                type_select, f"{property_col}:N", alt.value("lightgray")
-            ),
-            opacity=alt.condition(type_select, alt.value(0.8), alt.value(0.15)),
-            tooltip=[
-                id_col,
-                property_col,
-                year_col,
-                alt.Tooltip(f"{delta_col}:Q", format=".2f"),
-                alt.Tooltip(f"{delta_next_col}:Q", format=".2f"),
-            ],
+    def make_chart(year: int) -> alt.Chart:
+        df_year = data[data["N_year"] == year]
+        if df_year.empty:
+            return alt.Chart().mark_text(text="").properties(width=width, height=height)
+        scatter = (
+            alt.Chart(df_year)
+            .mark_circle(size=55)
+            .encode(
+                x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
+                y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
+                color=alt.condition(
+                    type_select, f"{property_col}:N", alt.value("lightgray")
+                ),
+                opacity=alt.condition(type_select, alt.value(0.8), alt.value(0.15)),
+                tooltip=[
+                    id_col,
+                    property_col,
+                    year_col,
+                    alt.Tooltip(f"{delta_col}:Q", format=".2f"),
+                    alt.Tooltip(f"{delta_next_col}:Q", format=".2f"),
+                ],
+            )
+            .add_params(type_select)
+            .properties(width=width, height=height, title=str(year))
         )
-        .add_params(type_select)
-        .properties(width=width, height=height)
-    )
-
-    # Regression lines (one per property type × period)
-    reg_lines = (
-        alt.Chart(df_lagged)
-        .transform_regression(
-            delta_col, delta_next_col, groupby=[property_col, "Period"]
-        )
-        .mark_line(size=2)
-        .encode(
-            x=f"{delta_col}:Q",
-            y=f"{delta_next_col}:Q",
-            color=f"{property_col}:N",
-            opacity=alt.condition(type_select, alt.value(1), alt.value(0.2)),
-        )
-    )
-
-    # Combine scatter + regression, facet pre/post marker year
-    final_chart = (
-        (scatter + reg_lines)
-        .facet(
-            column=alt.Column(
-                "Period:N",
-                title=None,
-                sort=[f"Pre-{marker_year}", f"Post-{marker_year}"],
+        reg = (
+            alt.Chart(df_year)
+            .transform_regression(delta_col, delta_next_col, groupby=[property_col])
+            .mark_line(size=2)
+            .encode(
+                x=f"{delta_col}:Q",
+                y=f"{delta_next_col}:Q",
+                color=f"{property_col}:N",
+                opacity=alt.condition(type_select, alt.value(1), alt.value(0.2)),
             )
         )
+        return scatter + reg
+
+    # compute the grid dynamically based on the number of years and readability
+    n_cols = 3
+    n_years = len(years)
+    n_rows = math.ceil(n_years / n_cols)
+
+    grid_years = []
+    for r in range(n_rows):
+        row_years = years[r * n_cols : (r + 1) * n_cols]
+        while len(row_years) < n_cols:
+            row_years.append(None)
+        grid_years.append(row_years)
+
+    rows = []
+    for row_years in grid_years:
+        charts = [
+            make_chart(y)
+            if y is not None
+            else alt.Chart().mark_text(text="").properties(width=width, height=height)
+            for y in row_years
+        ]
+        rows.append(alt.hconcat(*charts))
+
+    final_chart = (
+        alt.vconcat(*rows)
+        .resolve_scale(x="shared", y="shared")
         .properties(
             title=alt.TitleParams(
-                text=[
-                    f"Energy-Change Persistence Before and After {marker_year} Placard Introduction",
-                    "Chicago Energy Benchmarking Buildings",
-                ],
+                text="Energy-Change Persistence by Base Year N (2017–2023)",
                 subtitle=[
-                    "Each dot = one building's year-to-year change; lines = trend within property type",
+                    "Each dot = building’s Δ N→N+1 vs Δ N+1→N+2; lines = trend within property type"
                 ],
             )
         )
-        .resolve_scale(color="independent")
-        .interactive()
     )
 
-    return final_chart
+    return final_chart.interactive()
 
 
 # ----------Spatial Mapping-----------

@@ -848,126 +848,112 @@ def plot_delta_kernel_density(
 # ----------Regression Line plots----------
 
 
-def plot_energy_persistence_chart(
+def plot_energy_persistence_by_year(
     df_lagged: pd.DataFrame,
     property_col: str = "Primary Property Type",
     id_col: str = "ID",
     year_col: str = "Data Year",
     delta_col: str = "Delta",
     delta_next_col: str = "Delta_next",
-    marker_year: int = 2019,
-    width: int = 350,
-    height: int = 350,
+    start_year: int = 2017,
+    end_year: int = 2023,
+    width: int = 320,
+    height: int = 320,
 ) -> alt.Chart:
-    """Create an interactive scatter plot showing persistence of energy-use change (Δₜ → Δₜ₊₁) for each building, faceted by pre/post marker year.
+    """Create a 2×3 grid of scatter plots showing Δ N→N+1 vs Δ N+1→N+2 per base year N.
 
-    Parameters
-    ----------
-    df_lagged : pd.DataFrame
-        DataFrame containing at least the columns:
-        [ID, Primary Property Type, Data Year, Delta, Delta_next].
-    property_col : str, default="Primary Property Type"
-        Column name for property type.
-    id_col : str, default="ID"
-        Unique building identifier column.
-    year_col : str, default="Data Year"
-        Column for reporting year.
-    delta_col : str, default="Delta"
-        Column for Δ Year N→N+1.
-    delta_next_col : str, default="Delta_next"
-        Column for Δ Year N+1→N+2.
-    marker_year : int, default=2019
-        Year dividing pre/post-placard comparison.
-    width : int, default=350
-        Width per facet.
-    height : int, default=350
-        Height per facet.
-
-    Returns:
-    -------
-    alt.Chart
-        Interactive Altair facet chart comparing persistence before/after marker year.
+    Each dot = building; color = property type; regression lines per property type per year.
+    If fewer than 6 years exist, blank placeholders fill remaining cells for layout balance.
     """
-    # Add pre/post marker period
-    df_lagged = df_lagged.copy()
-    df_lagged["Period"] = df_lagged[year_col].apply(
-        lambda y: f"Pre-{marker_year}" if y < marker_year else f"Post-{marker_year}"
-    )
+    data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
+    data["N_year"] = data[year_col].astype(int) - 1
 
-    # Dropdown selector for property type
+    data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
+
+    years = sorted(data["N_year"].unique().tolist())
+
     type_select = alt.selection_point(
         fields=[property_col],
         bind=alt.binding_select(
-            options=sorted(df_lagged[property_col].unique().tolist()),
+            options=sorted(data[property_col].unique().tolist()),
             name="Property Type: ",
         ),
         empty="all",
     )
 
-    # Scatter points
-    scatter = (
-        alt.Chart(df_lagged)
-        .mark_circle(size=55)
-        .encode(
-            x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
-            y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
-            color=alt.condition(
-                type_select, f"{property_col}:N", alt.value("lightgray")
-            ),
-            opacity=alt.condition(type_select, alt.value(0.8), alt.value(0.15)),
-            tooltip=[
-                id_col,
-                property_col,
-                year_col,
-                alt.Tooltip(f"{delta_col}:Q", format=".2f"),
-                alt.Tooltip(f"{delta_next_col}:Q", format=".2f"),
-            ],
+    def make_chart(year: int) -> alt.Chart:
+        df_year = data[data["N_year"] == year]
+        if df_year.empty:
+            return alt.Chart().mark_text(text="").properties(width=width, height=height)
+        scatter = (
+            alt.Chart(df_year)
+            .mark_circle(size=55)
+            .encode(
+                x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
+                y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
+                color=alt.condition(
+                    type_select, f"{property_col}:N", alt.value("lightgray")
+                ),
+                opacity=alt.condition(type_select, alt.value(0.8), alt.value(0.15)),
+                tooltip=[
+                    id_col,
+                    property_col,
+                    year_col,
+                    alt.Tooltip(f"{delta_col}:Q", format=".2f"),
+                    alt.Tooltip(f"{delta_next_col}:Q", format=".2f"),
+                ],
+            )
+            .add_params(type_select)
+            .properties(width=width, height=height, title=str(year))
         )
-        .add_params(type_select)
-        .properties(width=width, height=height)
-    )
-
-    # Regression lines (one per property type × period)
-    reg_lines = (
-        alt.Chart(df_lagged)
-        .transform_regression(
-            delta_col, delta_next_col, groupby=[property_col, "Period"]
-        )
-        .mark_line(size=2)
-        .encode(
-            x=f"{delta_col}:Q",
-            y=f"{delta_next_col}:Q",
-            color=f"{property_col}:N",
-            opacity=alt.condition(type_select, alt.value(1), alt.value(0.2)),
-        )
-    )
-
-    # Combine scatter + regression, facet pre/post marker year
-    final_chart = (
-        (scatter + reg_lines)
-        .facet(
-            column=alt.Column(
-                "Period:N",
-                title=None,
-                sort=[f"Pre-{marker_year}", f"Post-{marker_year}"],
+        reg = (
+            alt.Chart(df_year)
+            .transform_regression(delta_col, delta_next_col, groupby=[property_col])
+            .mark_line(size=2)
+            .encode(
+                x=f"{delta_col}:Q",
+                y=f"{delta_next_col}:Q",
+                color=f"{property_col}:N",
+                opacity=alt.condition(type_select, alt.value(1), alt.value(0.2)),
             )
         )
+        return scatter + reg
+
+    grid_years = [
+        years[0:3],
+        years[3:5],
+    ]
+
+    row_n = 3
+
+    for row in grid_years:
+        while len(row) < row_n:
+            row.append(None)
+
+    rows = []
+    for row_years in grid_years:
+        charts = [
+            make_chart(y)
+            if y is not None
+            else alt.Chart().mark_text(text="").properties(width=width, height=height)
+            for y in row_years
+        ]
+        rows.append(alt.hconcat(*charts))
+
+    final_chart = (
+        alt.vconcat(*rows)
+        .resolve_scale(x="shared", y="shared")
         .properties(
             title=alt.TitleParams(
-                text=[
-                    f"Energy-Change Persistence Before and After {marker_year} Placard Introduction",
-                    "Chicago Energy Benchmarking Buildings",
-                ],
+                text="Energy-Change Persistence by Base Year N (2017–2023)",
                 subtitle=[
-                    "Each dot = one building's year-to-year change; lines = trend within property type",
+                    "Each dot = building’s Δ N→N+1 vs Δ N+1→N+2; lines = trend within property type"
                 ],
             )
         )
-        .resolve_scale(color="independent")
-        .interactive()
     )
 
-    return final_chart
+    return final_chart.interactive()
 
 
 # ----------Spatial Mapping-----------

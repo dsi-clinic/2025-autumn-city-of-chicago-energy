@@ -215,16 +215,22 @@ def pivot_energy_metric(
     return pivot_df
 
 
-def load_neighborhood_geojson(geojson_path: Path) -> dict:
-    """Loads a neighborhood GeoJSON file.
-
-    Args:
-        geojson_path: Path to the neighborhood GeoJSON file.
+def load_neighborhood_geojson() -> dict:
+    """Loads the neighborhood GeoJSON file.
 
     Returns:
         A Python dictionary parsed from the GeoJSON file.
     """
-    geojson_path = Path(geojson_path)
+    path = DATA_DIR / "chicago_geo"
+
+    if not path.exists():
+        path = Path("/project") / "data" / "chicago_geo"
+
+    if not path.exists():
+        raise FileNotFoundError(f"Data directory not found: {path}")
+
+    geojson_path = path / "neighborhood_chi.geojson"
+
     logger.info(f"Loading GeoJSON from: {geojson_path.resolve()}")
     with geojson_path.open() as f:
         geojson = json.load(f)

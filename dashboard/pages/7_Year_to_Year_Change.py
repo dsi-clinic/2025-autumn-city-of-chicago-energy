@@ -52,7 +52,7 @@ site_eui_col = st.selectbox(
 # Build lagged dataset
 df_lagged = prepare_persistence(
     energy_df,
-    decade_built_col=category_col,   # just used as grouping key inside your function
+    decade_built_col=category_col,  # just used as grouping key inside your function
     site_eui_col=site_eui_col,
 )
 
@@ -67,15 +67,11 @@ with col1:
 
 with col2:
     ppt_opts = sorted(energy_df["Primary Property Type"].dropna().unique().tolist())
-    sel_ppt = st.multiselect(
-        "Primary Property Type", ppt_opts, default=ppt_opts
-    )
+    sel_ppt = st.multiselect("Primary Property Type", ppt_opts, default=ppt_opts)
 
 with col3:
     ca_opts = sorted(energy_df["Community Area"].dropna().unique().tolist())
-    sel_ca = st.multiselect(
-        "Community Area", ca_opts, default=ca_opts
-    )
+    sel_ca = st.multiselect("Community Area", ca_opts, default=ca_opts)
 
 energy_df_filtered = energy_df[
     energy_df["Time Built"].isin(sel_time_built)
@@ -84,16 +80,21 @@ energy_df_filtered = energy_df[
 ]
 
 if energy_df_filtered.empty:
-    st.warning("No buildings match the selected filters. Please broaden your selections.")
+    st.warning(
+        "No buildings match the selected filters. Please broaden your selections."
+    )
     st.stop()
 
-if energy_df_filtered["Data Year"].nunique() < 3:
-    st.warning("Not enough years of data for the selected filters to compute year‑to‑year changes.")
+three = 3
+if energy_df_filtered["Data Year"].nunique() < three:
+    st.warning(
+        "Not enough years of data for the selected filters to compute year‑to‑year changes."
+    )
     st.stop()
 
 df_lagged = prepare_persistence(
     energy_df_filtered,
-    decade_built_col=category_col,   
+    decade_built_col=category_col,
     site_eui_col=site_eui_col,
 )
 
@@ -118,5 +119,3 @@ rows = plot_energy_persistence_rows(
 
 for row_chart in rows:
     st.altair_chart(row_chart, use_container_width=True)
-
-

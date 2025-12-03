@@ -34,34 +34,79 @@ variables = [
     "Total GHG Emissions (Metric Tons CO2e)",
     "GHG Intensity (kg CO2e/sq ft)",
 ]
-string_columns = ["Time Built", "Primary Property Type", "Community Area"]
 
+# This is the *facet* dimension (which chart grouping to show)
+category_options = ["Time Built", "Primary Property Type", "Community Area"]
 category_col = st.selectbox(
     "Select category for Building Classification",
-    options=string_columns,
-    index=string_columns.index("Decade Built")
-    if "Decade Built" in string_columns
-    else 0,
+    options=category_options,
+    index=category_options.index("Time Built"),
 )
 
 site_eui_col = st.selectbox(
     "Select column for Energy Metric",
     options=variables,
-    index=variables.index("Site EUI (kBtu/sq ft)")
-    if "Site EUI (kBtu/sq ft)" in variables
-    else 0,
+    index=variables.index("Site EUI (kBtu/sq ft)"),
 )
 
+# Build lagged dataset
 df_lagged = prepare_persistence(
     energy_df,
-    decade_built_col=category_col,
+    decade_built_col=category_col,   # just used as grouping key inside your function
     site_eui_col=site_eui_col,
 )
 
-options = sorted(df_lagged[category_col].unique().tolist())
-selected_category = st.selectbox(category_col, options)
+# --- Global filters (always visible) ---
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    time_built_opts = sorted(energy_df["Time Built"].dropna().unique().tolist())
+    sel_time_built = st.multiselect(
+        "Time Built", time_built_opts, default=time_built_opts
+    )
+
+with col2:
+    ppt_opts = sorted(energy_df["Primary Property Type"].dropna().unique().tolist())
+    sel_ppt = st.multiselect(
+        "Primary Property Type", ppt_opts, default=ppt_opts
+    )
+
+with col3:
+    ca_opts = sorted(energy_df["Community Area"].dropna().unique().tolist())
+    sel_ca = st.multiselect(
+        "Community Area", ca_opts, default=ca_opts
+    )
+
+energy_df_filtered = energy_df[
+    energy_df["Time Built"].isin(sel_time_built)
+    & energy_df["Primary Property Type"].isin(sel_ppt)
+    & energy_df["Community Area"].isin(sel_ca)
+]
+
+if energy_df_filtered.empty:
+    st.warning("No buildings match the selected filters. Please broaden your selections.")
+    st.stop()
+
+if energy_df_filtered["Data Year"].nunique() < 3:
+    st.warning("Not enough years of data for the selected filters to compute year‑to‑year changes.")
+    st.stop()
+
+df_lagged = prepare_persistence(
+    energy_df_filtered,
+    decade_built_col=category_col,   
+    site_eui_col=site_eui_col,
+)
+
+class_opts = sorted(df_lagged[category_col].dropna().unique().tolist())
+selected_class = st.selectbox(f"{category_col} filter", ["All"] + class_opts)
+
+if selected_class != "All":
+    df_lagged_plot = df_lagged[df_lagged[category_col] == selected_class]
+else:
+    df_lagged_plot = df_lagged
+
 rows = plot_energy_persistence_rows(
-    df_lagged=df_lagged,
+    df_lagged=df_lagged_plot,
     property_col=category_col,
     id_col="ID",
     year_col="Data Year",
@@ -69,8 +114,9 @@ rows = plot_energy_persistence_rows(
     delta_next_col="Delta_next",
     start_year=2017,
     end_year=2023,
-    selected_category=selected_category,
 )
 
 for row_chart in rows:
     st.altair_chart(row_chart, use_container_width=True)
+
+

@@ -59,9 +59,7 @@ def cache_geojson(tolerance: float = 0.00259) -> dict:
 
     Default tolerance is 0.00259 from balancing from appearence and rendering time
     """
-    geojson_data = load_neighborhood_geojson(
-        "/project/src/data/chicago_geo/neighborhood_chi.geojson"
-    )
+    geojson_data = load_neighborhood_geojson()
     gdf = gpd.GeoDataFrame.from_features(geojson_data["features"])
 
     # Simplify geometry in memory

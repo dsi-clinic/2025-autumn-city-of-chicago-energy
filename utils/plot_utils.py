@@ -9,6 +9,7 @@ It includes reusable functions for comparing variable distributions before and a
 """
 
 import logging
+import math
 import re
 import warnings
 from collections.abc import Callable, Iterable
@@ -1001,8 +1002,40 @@ def plot_energy_persistence_by_year(
 ) -> alt.Chart:
     """Create a 2×3 grid of scatter plots showing Δ N→N+1 vs Δ N+1→N+2 per base year N.
 
-    Each dot = building; color = property type; regression lines per property type per year.
-    If fewer than 6 years exist, blank placeholders fill remaining cells for layout balance.
+    Parameters
+    ----------
+    df_lagged : pd.DataFrame
+        DataFrame containing lagged Δ values, where each row corresponds to a building-year
+        and includes Δ (N→N+1) and Δ_next (N+1→N+2).
+    property_col : str, default "Primary Property Type"
+        Column name indicating the property type used for coloring and filtering.
+    id_col : str, default "ID"
+        Column identifying the building (shown in tooltip).
+    year_col : str, default "Data Year"
+        Column indicating the reference year used to compute lagged differences.
+        The base year N is inferred as (year_col - 1).
+    delta_col : str, default "Delta"
+        Column for ΔEUI from year N→N+1.
+    delta_next_col : str, default "Delta_next"
+        Column for ΔEUI from year N+1→N+2.
+    start_year : int, default 2017
+        Earliest base year N to include in the grid.
+    end_year : int, default 2023
+        Latest base year N to include in the grid.
+    width : int, default 320
+        Width of each subplot.
+    height : int, default 320
+        Height of each subplot.
+
+    Returns:
+    -------
+    alt.Chart
+        A vertically concatenated grid (2×3) of interactive Altair scatter plots with:
+        - Dots representing buildings
+        - Property-type color encoding
+        - Per-type regression trend lines
+        - Dropdown selector for property type
+        - Shared axes across plots
     """
     data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
     data["N_year"] = data[year_col].astype(int) - 1
@@ -1058,16 +1091,17 @@ def plot_energy_persistence_by_year(
         )
         return scatter + reg
 
-    grid_years = [
-        years[0:3],
-        years[3:5],
-    ]
+    # compute the grid dynamically based on the number of years and readability
+    n_cols = 3
+    n_years = len(years)
+    n_rows = math.ceil(n_years / n_cols)
 
-    row_n = 3
-
-    for row in grid_years:
-        while len(row) < row_n:
-            row.append(None)
+    grid_years = []
+    for r in range(n_rows):
+        row_years = years[r * n_cols : (r + 1) * n_cols]
+        while len(row_years) < n_cols:
+            row_years.append(None)
+        grid_years.append(row_years)
 
     rows = []
     for row_years in grid_years:

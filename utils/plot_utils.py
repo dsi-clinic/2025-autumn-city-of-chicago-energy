@@ -392,6 +392,124 @@ def plot_building_energy_deltas(
 # ----------Line graphs-----------
 
 
+def plot_multi_line_trend(
+    df: pd.DataFrame,
+    year_col: str,
+    value_cols: list[str],
+    labels: list[str] | None = None,
+    title: str = "Trend Over Time",
+    ylabel: str = "",
+    marker_year: int | None = None,
+    figsize: tuple = (8, 5),
+) -> tuple:
+    """Plot multiple lines (e.g., Chicago vs National) on the same chart.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataset containing year and metric columns.
+    year_col : str
+        Name of the year column.
+    value_cols : list[str]
+        Columns to plot as separate lines.
+    labels : list[str], optional
+        Pretty labels for legend. If None, use value_cols.
+    title : str
+        Chart title.
+    ylabel : str
+        Label for y-axis.
+    marker_year : int, optional
+        Draw a vertical dashed line (e.g., 2019 for placards).
+    figsize : tuple
+        Figure size.
+
+    Returns:
+    -------
+    Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
+        Figure and axis objects.
+    """
+    if labels is None:
+        labels = value_cols
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for col, label in zip(value_cols, labels):
+        ax.plot(
+            df[year_col],
+            df[col],
+            marker="o",
+            linewidth=2,
+            label=label,
+        )
+
+    if marker_year is not None:
+        ax.axvline(
+            marker_year,
+            color="gray",
+            linestyle="--",
+            alpha=0.6,
+            label=f"Policy year {marker_year}",
+        )
+
+    # ---- Styling ----
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel("Year", fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend()
+    fig.tight_layout()
+
+    return fig, ax
+
+
+def plot_relative_change(
+    data: pd.DataFrame,
+    year_col: str,
+    nat_col: str,
+    chi_col: str,
+    title: str,
+    ylabel: str = "Percent Change (%)",
+    baseline_year: int = 2018,
+) -> tuple:
+    """Plot relative percent change (vs baseline) for National vs Chicago."""
+    data = data.copy()
+
+    # Baseline values
+    base_nat = data.loc[data[year_col] == baseline_year, nat_col].to_numpy()[0]
+    base_chi = data.loc[data[year_col] == baseline_year, chi_col].to_numpy()[0]
+
+    # Compute %
+    data["Nat_Percent_Change"] = (data[nat_col] / base_nat - 1) * 100
+    data["Chi_Percent_Change"] = (data[chi_col] / base_chi - 1) * 100
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    ax.plot(
+        data[year_col],
+        data["Nat_Percent_Change"],
+        marker="o",
+        label="National % change",
+    )
+    ax.plot(
+        data[year_col],
+        data["Chi_Percent_Change"],
+        marker="s",
+        label="Chicago % change",
+    )
+
+    ax.axhline(0, color="black", linewidth=1)
+    ax.axvline(2019, color="gray", linestyle="--", alpha=0.6, label="Placard starts")
+
+    ax.set_title(title, fontsize=13)
+    ax.set_xlabel("Year")
+    ax.set_ylabel(ylabel)
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend()
+
+    fig.tight_layout()
+    return fig, ax
+
+
 def plot_trend_by_year(
     df: pd.DataFrame, numeric_cols: list[str], agg: str = "median"
 ) -> list[tuple]:
@@ -492,7 +610,7 @@ def plot_metric_by_property(
     width: int = 600,
     height: int = 400,
 ) -> alt.Chart:
-    """Plot an aggregated energy metric (mean, median, etc.) over time by property type, with an optional policy marker (e.g. 2019 placard introduction).
+    """Plot an aggregated energy metric (mean, median, etc.) over time by type, with an optional policy marker (e.g. 2019 placard introduction).
 
     Parameters
     ----------
@@ -503,7 +621,7 @@ def plot_metric_by_property(
     agg_func : Callable, optional
         Aggregation function (e.g., pd.Series.mean, pd.Series.median). Defaults to median.
     property_col : str, optional
-        Column name for property type. Defaults to 'Primary Property Type'.
+        Column name for type. Defaults to 'Primary Property Type'.
     year_col : str, optional
         Column name for data year. Defaults to 'Data Year'.
     marker_year : int, optional
@@ -535,9 +653,9 @@ def plot_metric_by_property(
         .encode(
             x=alt.X(f"{year_col}:O", title="Year", sort="ascending"),
             y=alt.Y("Aggregated_Metric:Q", title=f"{agg_name.title()} {metric_col}"),
-            color=alt.Color(f"{property_col}:N", title="Property Type"),
+            color=alt.Color(f"{property_col}:N", title=property_col),
             tooltip=[
-                alt.Tooltip(property_col, title="Property Type"),
+                alt.Tooltip(property_col, title=property_col),
                 alt.Tooltip(year_col, title="Year"),
                 alt.Tooltip(
                     "Aggregated_Metric:Q",
@@ -575,7 +693,7 @@ def plot_metric_by_property(
         .properties(
             width=width,
             height=height,
-            title=f"{agg_name.title()} {metric_col} by Property Type ({df[year_col].min()}–{df[year_col].max()})",
+            title=f"{agg_name.title()} {metric_col} by {property_col} ({df[year_col].min()}–{df[year_col].max()})",
         )
         .interactive()
     )
@@ -1009,6 +1127,99 @@ def plot_energy_persistence_by_year(
     )
 
     return final_chart.interactive()
+
+
+def plot_energy_persistence_rows(
+    df_lagged: pd.DataFrame,
+    property_col: str = "Primary Property Type",
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+    delta_col: str = "Delta",
+    delta_next_col: str = "Delta_next",
+    start_year: int = 2017,
+    end_year: int = 2023,
+    width: int = 320,
+    height: int = 320,
+    selected_category: str = None,
+) -> list[alt.HConcatChart]:
+    """Return a list of row charts (each row is an hconcat of years)."""
+    data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
+    if selected_category is not None:
+        data = data[data[property_col] == selected_category]
+    data["N_year"] = data[year_col].astype(int) - 1
+    data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
+
+    years = sorted(data["N_year"].unique().tolist())
+    if not years:
+        return []
+
+    type_select = alt.selection_point(
+        fields=[property_col],
+        empty="all",
+    )
+
+    def make_chart(year: int) -> alt.Chart:
+        df_year = data[data["N_year"] == year]
+        if df_year.empty:
+            return alt.Chart().mark_text(text="").properties(width=width, height=height)
+
+        scatter = (
+            alt.Chart(df_year)
+            .mark_circle(size=55)
+            .encode(
+                x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
+                y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
+                color=alt.condition(
+                    type_select, f"{property_col}:N", alt.value("lightgray")
+                ),
+                opacity=alt.condition(type_select, alt.value(0.8), alt.value(0.15)),
+                tooltip=[
+                    id_col,
+                    property_col,
+                    year_col,
+                    alt.Tooltip(f"{delta_col}:Q", format=".2f"),
+                    alt.Tooltip(f"{delta_next_col}:Q", format=".2f"),
+                ],
+            )
+            .add_params(type_select)
+            .properties(width=width, height=height, title=str(year))
+        )
+
+        reg = (
+            alt.Chart(df_year)
+            .transform_regression(delta_col, delta_next_col, groupby=[property_col])
+            .mark_line(size=2)
+            .encode(
+                x=f"{delta_col}:Q",
+                y=f"{delta_next_col}:Q",
+                color=f"{property_col}:N",
+                opacity=alt.condition(type_select, alt.value(1), alt.value(0.2)),
+            )
+        )
+
+        return scatter + reg
+
+    # Build year grid (same as before)
+    grid_years = [
+        years[0:3],
+        years[3:5],
+    ]
+    row_n = 3
+    for row in grid_years:
+        while len(row) < row_n:
+            row.append(None)
+
+    rows = []
+    for row_years in grid_years:
+        charts = [
+            make_chart(y)
+            if y is not None
+            else alt.Chart().mark_text(text="").properties(width=width, height=height)
+            for y in row_years
+        ]
+        rows.append(alt.hconcat(*charts).resolve_scale(x="shared", y="shared"))
+
+    return rows
 
 
 # ----------Spatial Mapping-----------

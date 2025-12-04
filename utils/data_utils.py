@@ -215,16 +215,22 @@ def pivot_energy_metric(
     return pivot_df
 
 
-def load_neighborhood_geojson(geojson_path: Path) -> dict:
-    """Loads a neighborhood GeoJSON file.
-
-    Args:
-        geojson_path: Path to the neighborhood GeoJSON file.
+def load_neighborhood_geojson() -> dict:
+    """Loads the neighborhood GeoJSON file.
 
     Returns:
         A Python dictionary parsed from the GeoJSON file.
     """
-    geojson_path = Path(geojson_path)
+    path = DATA_DIR / "chicago_geo"
+
+    if not path.exists():
+        path = Path("/project") / "data" / "chicago_geo"
+
+    if not path.exists():
+        raise FileNotFoundError(f"Data directory not found: {path}")
+
+    geojson_path = path / "neighborhood_chi.geojson"
+
     logger.info(f"Loading GeoJSON from: {geojson_path.resolve()}")
     with geojson_path.open() as f:
         geojson = json.load(f)
@@ -423,6 +429,123 @@ def covid_impact_category(
     )
 
     return energy_df
+
+
+def assign_effective_year_built(df: pd.DataFrame) -> pd.DataFrame:
+    """Assigns the 'Effective Year Built' for each building ID.
+
+    If one unique non-NaN year exists, it is assigned; if multiple years exist, assigns 'Multiple Years Built'; otherwise assigns np.nan.
+
+    Args:
+        df (pd.DataFrame): DataFrame with columns 'ID' and 'Year Built'.
+
+    Returns:
+        pd.DataFrame: Original DataFrame with new 'Effective Year Built' column.
+    """
+
+    def get_years(series: pd.Series) -> np.ndarray:
+        unique_years = series.dropna().unique()
+        if len(unique_years) == 1:
+            # Building has one unique non-NaN value (regardless of number of NaNs)
+            return np.repeat(unique_years[0], len(series))
+        elif len(unique_years) > 1:
+            # Building has multiple non-NaN values
+            return np.repeat("Multiple Years Built", len(series))
+        else:
+            # Building has only NaNs
+            return np.repeat(np.nan, len(series))
+
+    df["Effective Year Built"] = df.groupby("ID")["Year Built"].transform(get_years)
+    return df
+
+
+def categorize_time_built(df: pd.DataFrame) -> pd.date_range:
+    """Categorize buildings into construction period bins based on their 'Year Built'.
+
+    Filters out entries where 'Effective Year Built' is missing or equals "Multiple Years Built".
+    Then assigns a 'Decade Built' category to each remaining row based on the value in the 'Year Built' column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with columns 'Year Built' and 'Effective Year Built'.
+
+    Returns:
+    -------
+    pd.DataFrame
+        Filtered DataFrame with an added 'Decade Built' categorical column.
+    """
+    is_valid = (df["Effective Year Built"].notna()) & (
+        df["Effective Year Built"] != "Multiple Years Built"
+    )
+
+    valid_df = df[is_valid].copy()
+    bins = [0, 1920, 1960, 1990, 2010, float("inf")]
+    labels = ["Before 1920", "1920-1960", "1960-1990", "1990-2010", "After 2010"]
+
+    valid_df["Time Built"] = pd.cut(
+        valid_df["Year Built"],
+        bins=bins,
+        labels=labels,
+        right=False,
+        include_lowest=True,
+    )
+
+    return valid_df
+
+
+def prepare_persistence(
+    df: pd.DataFrame,
+    decade_built_col: str = "Time Built",
+    site_eui_col: str = "Site EUI (kBtu/sq ft)",
+) -> pd.DataFrame:
+    """Prepare a DataFrame for energy persistence analysis by calculating year-to-year changes and aligning consecutive changes for comparison.
+
+    The function filters and cleans input data, computes the year-over-year change in energy use (Delta)
+    for each building, then aligns these changes to compare consecutive time intervals. The columns for
+    construction period and site energy use are parameterized.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The input DataFrame containing building energy data.
+    decade_built_col : str, optional
+        Name of the column indicating the decade or period the building was constructed (default is 'Decade Built').
+    site_eui_col : str, optional
+        Name of the column with site energy use values (default is 'Site EUI (kBtu/sq ft)').
+
+    Returns:
+    -------
+    pd.DataFrame
+        A DataFrame containing only valid rows, with columns for year-over-year energy change ('Delta')
+        and the next year's change ('Delta_next') for each building.
+    """
+    cols = ["ID", "Data Year", decade_built_col, site_eui_col]
+    site_df = df[cols].dropna().copy()
+
+    site_df["Data Year"] = site_df["Data Year"].astype(int)
+    site_df["ID"] = site_df["ID"].astype(str)
+    site_df[decade_built_col] = site_df[decade_built_col].astype(str)
+    site_df[site_eui_col] = pd.to_numeric(site_df[site_eui_col], errors="coerce")
+    site_df = site_df.dropna(subset=[site_eui_col])
+
+    df_delta = (
+        site_df.sort_values(["ID", "Data Year"])
+        .groupby("ID", group_keys=False)
+        .apply(lambda g: g.assign(Delta=g[site_eui_col].diff()))
+        .dropna(subset=["Delta"])
+        .reset_index(drop=True)
+    )
+
+    df_lagged = (
+        df_delta.sort_values([decade_built_col, "ID", "Data Year"])
+        .groupby([decade_built_col, "ID"])
+        .apply(lambda g: g.assign(Delta_next=g["Delta"].shift(-1)))
+        .dropna(subset=["Delta", "Delta_next"])
+        .reset_index(drop=True)
+    )
+
+    return df_lagged
 
 
 if __name__ == "__main__":

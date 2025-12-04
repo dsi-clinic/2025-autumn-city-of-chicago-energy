@@ -1033,7 +1033,9 @@ def plot_energy_persistence_by_year(
             .mark_circle(size=55)
             .encode(
                 x=alt.X(f"{delta_col}:Q", title=f"Δ {year}→{year+1} (kBtu/sq ft)"),
-                y=alt.Y(f"{delta_next_col}:Q", title=f"Δ {year+1}→{year+2} (kBtu/sq ft)"),
+                y=alt.Y(
+                    f"{delta_next_col}:Q", title=f"Δ {year+1}→{year+2} (kBtu/sq ft)"
+                ),
                 color=alt.condition(
                     type_select, f"{property_col}:N", alt.value("lightgray")
                 ),
@@ -1119,6 +1121,7 @@ def plot_energy_persistence_rows(
     data[year_col] = data[year_col].astype(int)
     data["N_year"] = data[year_col] - 1
     data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
+
     def _year_label(n: int) -> str:
         return f"{n}→{n+1} vs {n+1}→{n+2}"
 
@@ -1137,7 +1140,7 @@ def plot_energy_persistence_rows(
             return alt.Chart().mark_text(text="").properties(width=width, height=height)
 
         x_title = f"Δ {year}→{year+1} (kBtu/sq ft)"
-        y_title = f"Δ {year+1}→{year+2} (kBtu/sq ft)" 
+        y_title = f"Δ {year+1}→{year+2} (kBtu/sq ft)"
 
         scatter = (
             alt.Chart(df_year)

@@ -17,6 +17,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
+
 def clean_numeric(series: pd.Series) -> pd.Series:
     """Cleaning columns to be numeric data type"""
     return (
@@ -34,7 +35,7 @@ def load_data() -> pd.DataFrame:
 
     # Backup absolute path for notebook use
     if not path.exists():
-            path = Path("/project") / "data" / "chicago_energy_benchmarking"
+        path = Path("/project") / "data" / "chicago_energy_benchmarking"
 
     if not path.exists():
         raise FileNotFoundError(f"Data directory not found: {path}")

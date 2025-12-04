@@ -8,7 +8,7 @@ from utils.dashboard_utils import apply_page_config
 from utils.data_utils import concurrent_buildings
 from utils.settings import DATA_DIR
 
-concurrent_dataframe = concurrent_buildings()
+core_dataframe = concurrent_buildings()
 apply_page_config()
 
 st.title("City of Chicago - Energy Dashboard")
@@ -97,7 +97,7 @@ with col1:
     """)
 
     st.markdown(
-        "The final dataframe filters down data to only have concurrent buildings for the 10 year span"
+        "**The final dataframe filters down data to only have core 2363 out of 3852 buildings for the 10 year span**"
     )
 
     st.markdown("""
@@ -133,9 +133,9 @@ with st.expander("Timeline of Reported Data"):
 
 st.divider()
 
-st.markdown("## Concurrent Dataframe")
+st.markdown("## Core Dataframe")
 
-st.dataframe(concurrent_dataframe)
+st.dataframe(core_dataframe)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

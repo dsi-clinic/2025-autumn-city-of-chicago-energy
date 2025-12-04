@@ -97,7 +97,7 @@ with col1:
     """)
 
     st.markdown(
-        "The final dataframe filters down data to only have core 2363 out of 3852 buildings for the 10 year span"
+        "**The final dataframe filters down data to only have core 2363 out of 3852 buildings for the 10 year span**"
     )
 
     st.markdown("""

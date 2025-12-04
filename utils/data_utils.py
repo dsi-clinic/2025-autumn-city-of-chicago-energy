@@ -17,7 +17,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
-
 def clean_numeric(series: pd.Series) -> pd.Series:
     """Cleaning columns to be numeric data type"""
     return (
@@ -32,6 +31,10 @@ def clean_numeric(series: pd.Series) -> pd.Series:
 def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
     path = DATA_DIR / "chicago_energy_benchmarking"
+
+    # Backup absolute path for notebook use
+    if not path.exists():
+            path = Path("/project") / "data" / "chicago_energy_benchmarking"
 
     if not path.exists():
         raise FileNotFoundError(f"Data directory not found: {path}")

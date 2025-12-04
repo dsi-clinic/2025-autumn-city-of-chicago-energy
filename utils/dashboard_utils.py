@@ -82,6 +82,7 @@ def metric_list() -> list:
         "District Steam Use (kBtu)",
         "District Chilled Water Use (kBtu)",
         "All Other Fuel Use (kBtu)",
+        "Water Use (kGal)",
         "Site EUI (kBtu/sq ft)",
         "Source EUI (kBtu/sq ft)",
         "Weather Normalized Site EUI (kBtu/sq ft)",

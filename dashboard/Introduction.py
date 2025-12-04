@@ -7,7 +7,7 @@ import streamlit as st
 from utils.dashboard_utils import apply_page_config
 from utils.data_utils import concurrent_buildings
 
-concurrent_dataframe = concurrent_buildings()
+core_dataframe = concurrent_buildings()
 apply_page_config()
 
 st.title("City of Chicago - Energy Dashboard")
@@ -132,9 +132,9 @@ with st.expander("Timeline of Reported Data"):
 
 st.divider()
 
-st.markdown("## Concurrent Dataframe")
+st.markdown("## Core Dataframe")
 
-st.dataframe(concurrent_dataframe)
+st.dataframe(core_dataframe)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

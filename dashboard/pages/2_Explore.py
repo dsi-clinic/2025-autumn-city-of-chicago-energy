@@ -27,23 +27,6 @@ geojson_data = cache_geojson()
 metrics_list = metric_list()
 years_list, full_year_list = year_lists()
 
-Scores = ["ENERGY STAR Score", "Chicago Energy Rating"]
-Utility = [
-    "Electricity Use (kBtu)",
-    "Natural Gas Use (kBtu)",
-    "District Steam Use (kBtu)",
-    "District Chilled Water Use (kBtu)",
-    "All Other Fuel Use (kBtu)",
-    "Water Use (kGal)",
-]
-Energy = [
-    "Site EUI (kBtu/sq ft)",
-    "Source EUI (kBtu/sq ft)",
-    "Weather Normalized Site EUI (kBtu/sq ft)",
-    "Weather Normalized Source EUI (kBtu/sq ft)",
-]
-Emissions = ["Total GHG Emissions (Metric Tons CO2e)", "GHG Intensity (kg CO2e/sq ft)"]
-
 # ------------------- Start Dashboard --------------------
 
 # DATA COUNT PLOTS #-------------------------------------------------------------------
@@ -124,31 +107,9 @@ st.divider()
 
 #  #-------------------------------------------------------------------
 
-st.markdown("### Utility Graphs")
 render_dashboard_section(
-    metric_list=Utility,
+    metric_list=metrics_list,
     geojson_data=cache_geojson(),
-    special_condition="All",  # resize when neighborhood == "All"
-    key_prefix="Utility",
-)
-st.markdown("### Energy Graphs")
-render_dashboard_section(
-    metric_list=Energy,
-    geojson_data=cache_geojson(),
-    special_condition="All",  # resize when neighborhood == "All"
-    key_prefix="Energy",
-)
-st.markdown("### Emission Graphs")
-render_dashboard_section(
-    metric_list=Emissions,
-    geojson_data=cache_geojson(),
-    special_condition="All",  # resize when neighborhood == "All"
-    key_prefix="Emissions",
-)
-st.markdown("### Score Graphs")
-render_dashboard_section(
-    metric_list=Scores,
-    geojson_data=cache_geojson(),
-    special_condition="Chicago Energy Rating",
-    key_prefix="Score",
+    special_condition="All",  # resize bar chart when neighborhood == "All"
+    key_prefix="Variable",
 )

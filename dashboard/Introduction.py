@@ -6,6 +6,7 @@ import streamlit as st
 
 from utils.dashboard_utils import apply_page_config
 from utils.data_utils import concurrent_buildings
+from utils.settings import DATA_DIR
 
 core_dataframe = concurrent_buildings()
 apply_page_config()
@@ -96,20 +97,20 @@ with col1:
     """)
 
     st.markdown(
-        "**The final dataframe filters down data to only have core buildings for the 10 year span**"
+        "The final dataframe filters down data to only have core 2363 out of 3852 buildings for the 10 year span"
     )
 
     st.markdown("""
     #### Definitions
 
-    - **Chicago Energy Rating:** The zero-to-four-star Chicago Energy Rating assigned to the building in the shown Data Year. A building with zero stars did not submit a report, or did submit a report but was missing required information. All other buildings receive between one and four stars, with four stars reflecting the highest performance. Every building receives a Chicago Energy Rating Placard with this rating, which must be posted in a prominent location at the building. The rating must also be shared at the time of listing the building for sale or for lease. For more information, visit: www.ChicagoEnergyRating.org. **This column was added for the 2018 Data Year. It is blank for previous years.**
+    - **Chicago Energy Rating:** The zero-to-four-star Chicago Energy Rating assigned to the building in the shown Data Year. A building with zero stars did not submit a report, or did submit a report but was missing required information. All other buildings receive between one and four stars, with four stars reflecting the highest performance. Every building receives a Chicago Energy Rating Placard with this rating, which must be posted in a prominent location at the building. The rating must also be shared at the time of listing the building for sale or for lease. For more information, visit: www.ChicagoEnergyRating.org. This column was added for the 2018 Data Year. It is blank for previous years.
     - **ENERGY STAR Score:** 1–100 rating that assesses a property’s overall energy performance, based on national data to control for differences among climate, building uses, and operations. A score of 50 represents the national median.
     - **Exempt From Chicago Energy Rating:** Shows whether the building is subject to the Chicago Energy Rating Ordinance. Some properties are required to submit energy benchmarking reports but are not subject to the requirements of the Chicago Energy Rating program. These buildings do not receive a Chicago Energy Rating, typically due to technical reasons. This column was added for the 2018 Data Year. It is blank for previous years.
     """)
 
 with col2:
     st.image(
-        "../data/image/Chicago_River_Aerial.jpg",
+        DATA_DIR / "image" / "Chicago_River_Aerial.jpg",
         caption="Chicago River Aerial View",
         use_container_width=True,
     )

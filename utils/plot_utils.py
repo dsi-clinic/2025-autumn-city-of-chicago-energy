@@ -987,6 +987,16 @@ def plot_delta_kernel_density(
 # ----------Regression Line plots----------
 
 
+def _year_label(n: int) -> str:
+    """Return a descriptive label for change metrics anchored at base year n.
+
+    The label encodes the two consecutive year-to-year differences being
+    compared, formatted as:
+    "{n}→{n+1} vs {n+1}→{n+2}".
+    """
+    return f"{n}→{n+1} vs {n+1}→{n+2}"
+
+
 def plot_energy_persistence_by_year(
     df_lagged: pd.DataFrame,
     property_col: str = "Primary Property Type",
@@ -1007,9 +1017,6 @@ def plot_energy_persistence_by_year(
     data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
     data[year_col] = data[year_col].astype(int)
     data["N_year"] = data[year_col] - 1
-
-    def _year_label(n: int) -> str:
-        return f"{n}→{n+1} vs {n+1}→{n+2}"
 
     data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
 
@@ -1121,9 +1128,6 @@ def plot_energy_persistence_rows(
     data[year_col] = data[year_col].astype(int)
     data["N_year"] = data[year_col] - 1
     data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
-
-    def _year_label(n: int) -> str:
-        return f"{n}→{n+1} vs {n+1}→{n+2}"
 
     years = sorted(data["N_year"].unique().tolist())
     if not years:

@@ -988,6 +988,16 @@ def plot_delta_kernel_density(
 # ----------Regression Line plots----------
 
 
+def _year_label(n: int) -> str:
+    """Return a descriptive label for change metrics anchored at base year n.
+
+    The label encodes the two consecutive year-to-year differences being
+    compared, formatted as:
+    "{n}→{n+1} vs {n+1}→{n+2}".
+    """
+    return f"{n}→{n+1} vs {n+1}→{n+2}"
+
+
 def plot_energy_persistence_by_year(
     df_lagged: pd.DataFrame,
     property_col: str = "Primary Property Type",
@@ -1038,7 +1048,8 @@ def plot_energy_persistence_by_year(
         - Shared axes across plots
     """
     data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
-    data["N_year"] = data[year_col].astype(int) - 1
+    data[year_col] = data[year_col].astype(int)
+    data["N_year"] = data[year_col] - 1
 
     data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
 
@@ -1061,8 +1072,10 @@ def plot_energy_persistence_by_year(
             alt.Chart(df_year)
             .mark_circle(size=55)
             .encode(
-                x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
-                y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
+                x=alt.X(f"{delta_col}:Q", title=f"Δ {year}→{year+1} (kBtu/sq ft)"),
+                y=alt.Y(
+                    f"{delta_next_col}:Q", title=f"Δ {year+1}→{year+2} (kBtu/sq ft)"
+                ),
                 color=alt.condition(
                     type_select, f"{property_col}:N", alt.value("lightgray")
                 ),
@@ -1076,7 +1089,7 @@ def plot_energy_persistence_by_year(
                 ],
             )
             .add_params(type_select)
-            .properties(width=width, height=height, title=str(year))
+            .properties(width=width, height=height, title=_year_label(year))
         )
         reg = (
             alt.Chart(df_year)
@@ -1146,7 +1159,8 @@ def plot_energy_persistence_rows(
     data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
     if selected_category is not None:
         data = data[data[property_col] == selected_category]
-    data["N_year"] = data[year_col].astype(int) - 1
+    data[year_col] = data[year_col].astype(int)
+    data["N_year"] = data[year_col] - 1
     data = data[(data["N_year"] >= start_year) & (data["N_year"] <= end_year)]
 
     years = sorted(data["N_year"].unique().tolist())
@@ -1163,12 +1177,15 @@ def plot_energy_persistence_rows(
         if df_year.empty:
             return alt.Chart().mark_text(text="").properties(width=width, height=height)
 
+        x_title = f"Δ {year}→{year+1} (kBtu/sq ft)"
+        y_title = f"Δ {year+1}→{year+2} (kBtu/sq ft)"
+
         scatter = (
             alt.Chart(df_year)
             .mark_circle(size=55)
             .encode(
-                x=alt.X(f"{delta_col}:Q", title="Δ Year N→N+1 (kBtu/sq ft)"),
-                y=alt.Y(f"{delta_next_col}:Q", title="Δ Year N+1→N+2 (kBtu/sq ft)"),
+                x=alt.X(f"{delta_col}:Q", title=x_title),
+                y=alt.Y(f"{delta_next_col}:Q", title=y_title),
                 color=alt.condition(
                     type_select, f"{property_col}:N", alt.value("lightgray")
                 ),
@@ -1182,7 +1199,7 @@ def plot_energy_persistence_rows(
                 ],
             )
             .add_params(type_select)
-            .properties(width=width, height=height, title=str(year))
+            .properties(width=width, height=height, title=_year_label(year))
         )
 
         reg = (

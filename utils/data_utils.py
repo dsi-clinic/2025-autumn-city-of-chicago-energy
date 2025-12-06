@@ -33,6 +33,7 @@ def load_data() -> pd.DataFrame:
     """Load and clean Chicago Energy Benchmarking data from CSV files located in DATA_DIR."""
     path = DATA_DIR / "chicago_energy_benchmarking"
 
+    # Backup absolute path for notebook use
     if not path.exists():
         path = Path("/project") / "data" / "chicago_energy_benchmarking"
 

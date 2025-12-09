@@ -641,3 +641,17 @@ def summarize_building(energy_df: pd.DataFrame, building_id: str | int) -> dict:
     logger.info("=" * 100)
 
     return summary
+
+
+# National Data
+def load_national_eui_data() -> dict:
+    """Return national reference statistics for Source EUI
+
+    based on ENERGY STAR nationwide benchmarking data.
+    """
+    national_data = {
+        "Data Year": [2018, 2019, 2020, 2021, 2022, 2023],
+        "National_Mean_Source_EUI": [205.9, 202.1, 187.4, 186.5, 185.5, 180.5],
+        "National_Median_Source_EUI": [142.1, 138.7, 124.1, 121.8, 118.1, 114.1],
+    }
+    return pd.DataFrame(national_data)

@@ -1,7 +1,7 @@
 # Notebooks
 
 This folder contains:
-* `building_composition_over_time.ipynb` contains visualizations showing how building composition chnaegs over time
+* `building_composition_over_time.ipynb` contains visualizations showing how building composition changes over time
 * `change_in_energy_use.ipynb` contains building-level filtration of dataset, visualizations of year-over-year change in average and building-level and cumulative change-from-baseline.
 * `change_in_energy_by_property_type.ipynb` contains property-type-level analysis of energy metrics, visualization of year-over-year change energy persistence, and categorization of property types into 3 COVID-impact-categories.
 * `change_in_energy_by_year_buildings_and_community.ipynb` contains visualizations for year-over-year change energy persistence for year built, # of buildings, and community area.

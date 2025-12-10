@@ -12,7 +12,12 @@ from utils.data_utils import (
 )
 from utils.plot_utils import plot_energy_persistence_rows
 
-st.title("Building Year to Year Difference Visualization")
+st.title("Autocorrelation of Year-over-Year Changes in Energy Use")
+st.markdown("""
+When analyzing trends over time, examining the relationship between past and future at the building level (autocorrelation) can provide insight into what is driving aggregate changes over time. Specifically, this analysis examines the lag-1 first-difference autocorrelation: if a building saw an increase in energy use last year, is it more or less likely to show an increase this year—or vice versa?
+
+Each chart below shows the relationship between the year-over-year change in energy use (Δ) of a building in a given year (e.g. 2016) and in the following year (e.g. 2017). Use the dropdowns to group or filter  by year built, property type, and community area.
+""")
 
 energy_df = load_data()
 energy_df = assign_effective_year_built(energy_df)

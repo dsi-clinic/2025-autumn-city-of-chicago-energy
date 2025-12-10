@@ -1263,6 +1263,80 @@ def aggregate_metric(dff: pd.DataFrame, metric: str) -> pd.DataFrame:
     return grouped
 
 
+def create_choropleth_layer(
+    geojson: dict,
+    data: pd.DataFrame,
+    metric_col: str,
+    feature_id: str = "properties.pri_neigh",
+    data_id: str = "Neighborhood",
+    title: str = "",
+    legend_title: str | None = None,
+    scheme: str = "blues",
+) -> alt.Chart:
+    """Helper to build a choropleth map layer with standard styling.
+
+    Parameters
+    ----------
+    geojson : dict
+        GeoJSON data structure (used for background & shapes).
+    data : pd.DataFrame
+        Data containing values to map.
+    metric_col : str
+        Column name in `data` to map to color.
+    feature_id : str
+        Path in GeoJSON features to join on (e.g. 'properties.pri_neigh').
+    data_id : str
+        Column name in `data` to join on.
+    title : str
+        Title of the chart.
+    legend_title : str, optional
+        Title for the color legend (default is metric_col).
+    scheme : str
+        Altair color scheme.
+
+    Returns:
+    -------
+    alt.Chart
+        Combined base + choropleth map.
+    """
+    if legend_title is None:
+        legend_title = metric_col
+
+    # Base map (grey background)
+    base = (
+        alt.Chart(alt.Data(values=geojson["features"]))
+        .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
+        .project(type="mercator")
+        .properties(width=600, height=400)
+    )
+
+    # Data overlay
+    overlay = (
+        alt.Chart(alt.Data(values=geojson["features"]))
+        .mark_geoshape(stroke="white", strokeWidth=0.5)
+        .transform_lookup(
+            lookup=feature_id,
+            from_=alt.LookupData(data, data_id, [metric_col]),
+        )
+        .encode(
+            color=alt.Color(
+                f"{metric_col}:Q",
+                title=legend_title,
+                scale=alt.Scale(scheme=scheme),
+                legend=alt.Legend(title=legend_title),
+            ),
+            tooltip=[
+                alt.Tooltip(f"{feature_id}:N", title="Neighborhood"),
+                alt.Tooltip(f"{metric_col}:Q", format=".2f", title=legend_title),
+            ],
+        )
+        .project(type="mercator")
+        .properties(title=alt.TitleParams(text=title, fontSize=20))
+    )
+
+    return (base + overlay).properties(height=600)
+
+
 def plot_choropleth(
     geojson: dict, dff: pd.DataFrame, metric: str, year: int | None = None
 ) -> alt.Chart:
@@ -1277,37 +1351,14 @@ def plot_choropleth(
         data = dff.groupby("Neighborhood", as_index=False)[metric].mean()
         title = f"Average {metric} by Neighborhood (All Years)"
 
-    base = (
-        alt.Chart(alt.Data(values=geojson["features"]))
-        .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
-        .project(type="mercator")
-        .properties(width=600, height=400)
+    return create_choropleth_layer(
+        geojson=geojson,
+        data=data,
+        metric_col=metric,
+        title=title,
+        legend_title=metric,
+        scheme="blues",
     )
-
-    overlay = (
-        alt.Chart(alt.Data(values=geojson["features"]))
-        .mark_geoshape(stroke="white", strokeWidth=0.5)
-        .transform_lookup(
-            lookup="properties.pri_neigh",
-            from_=alt.LookupData(data, "Neighborhood", [metric]),
-        )
-        .encode(
-            color=alt.Color(
-                f"{metric}:Q",
-                title=metric,
-                scale=alt.Scale(scheme="blues"),
-                legend=alt.Legend(title=metric),
-            ),
-            tooltip=[
-                alt.Tooltip("properties.pri_neigh:N", title="Neighborhood"),
-                alt.Tooltip(f"{metric}:Q", format=".2f", title=metric),
-            ],
-        )
-        .project(type="mercator")
-        .properties(title=title)
-    )
-
-    return base + overlay
 
 
 def save_all_metric_maps(
@@ -1365,46 +1416,24 @@ def plot_building_count_map(
 
     if year:
         data = df_counts[df_counts["Data Year"] == year]
-        title = f"Number of Reported Buildings by Neighborhood ({year})"
+        title = f"Number of reporting buildings ({year})"
     else:
         data = (
             df_counts.groupby("Community Area", as_index=False)["Building_Count"]
             .mean()
             .rename(columns={"Building_Count": "Building_Count"})
         )
-        title = "Average Number of Reported Buildings by Neighborhood (All Years)"
+        title = "Number of buildings with complete data from 2016 to 2023"
 
-    base = (
-        alt.Chart(alt.Data(values=geojson["features"]))
-        .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
-        .project(type="mercator")
-        .properties(width=600, height=400)
+    return create_choropleth_layer(
+        geojson=geojson,
+        data=data,
+        metric_col="Building_Count",
+        data_id="Community Area",
+        title=title,
+        legend_title="Number of Buildings",
+        scheme="blues",
     )
-
-    overlay = (
-        alt.Chart(alt.Data(values=geojson["features"]))
-        .mark_geoshape(stroke="white", strokeWidth=0.5)
-        .transform_lookup(
-            lookup="properties.pri_neigh",
-            from_=alt.LookupData(data, "Community Area", ["Building_Count"]),
-        )
-        .encode(
-            color=alt.Color(
-                "Building_Count:Q",
-                title="Building Count",
-                scale=alt.Scale(scheme="blues"),
-                legend=alt.Legend(title="Number of Buildings"),
-            ),
-            tooltip=[
-                alt.Tooltip("properties.pri_neigh:N", title="Neighborhood"),
-                alt.Tooltip("Building_Count:Q", format=".0f", title="Buildings"),
-            ],
-        )
-        .project(type="mercator")
-        .properties(title=title)
-    )
-
-    return base + overlay
 
 
 def plot_metric_change_map(

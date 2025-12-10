@@ -49,7 +49,7 @@ with st.container(border=True):
     st.markdown(
         """
         <div style='text-align: center; margin-top: 20px;'>
-            <strong>Team:</strong> Kiki Mei, Alejandro Orellana, Mira Shi, Han Zhang
+            <strong>Student Team:</strong> Kiki Mei, Alejandro Orellana, Mira Shi, Han Zhang
         </div>
         """,
         unsafe_allow_html=True,
@@ -97,7 +97,7 @@ with col1:
     """)
 
     st.markdown(
-        "**The final dataframe filters down data to only have core 2363 out of 3852 buildings for the 10 year span**"
+        "The final dataframe filters down data to only have core 2363 out of 3852 buildings for the 10 year span."
     )
 
     st.markdown("""
@@ -133,7 +133,8 @@ with st.expander("Timeline of Reported Data"):
 
 st.divider()
 
-st.markdown("## Core Dataframe")
+st.markdown("## Chicago Energy Benchmarking Dataset")
+st.markdown("#### Buildings with Complete Data (2016-2023)")
 
 st.dataframe(core_dataframe)
 

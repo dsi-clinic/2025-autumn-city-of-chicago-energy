@@ -1,4 +1,4 @@
-"""Exploratroy Analysis Page"""
+"""Exploratory Analysis Page"""
 
 import time
 
@@ -31,8 +31,6 @@ years_list, full_year_list = year_lists()
 
 # DATA COUNT PLOTS #-------------------------------------------------------------------
 st.divider()
-# Log scale toggle
-log_scale = st.checkbox("Use Log Scale", value=False)
 
 # Initialize session state
 if "playing" not in st.session_state:
@@ -40,31 +38,33 @@ if "playing" not in st.session_state:
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
 
+# Controls
+ctrl1, _, ctrl2, _, ctrl3, _, ctrl4, _ = st.columns([1, 0.2, 1, 0.2, 1, 0.1, 1, 6])
+with ctrl1:
+    log_scale = st.checkbox("Use Log Scale", value=False)
+with ctrl2:
+    selected_year = st.selectbox(
+        "Select Year:",
+        years_list,
+        index=st.session_state.current_index,
+        key="year_selector",
+    )
+    if selected_year != years_list[st.session_state.current_index]:
+        st.session_state.current_index = years_list.index(selected_year)
+        st.session_state.playing = False
+with ctrl3:
+    if st.button("▶️ Play Animation"):
+        st.session_state.playing = True
+with ctrl4:
+    if st.button("⏸️ Pause Animation"):
+        st.session_state.playing = False
+
+
 # Layout columns
 col1, col2 = st.columns([1, 1])
 
 # --- Full Data Animation ---
 with col1:
-    st.markdown("### Full Data Building Count Over Time - Animation")
-
-    ctrl1, ctrl2, ctrl3 = st.columns([1, 1, 1])
-    with ctrl1:
-        if st.button("▶️ Play Animation"):
-            st.session_state.playing = True
-    with ctrl2:
-        if st.button("⏸️ Pause"):
-            st.session_state.playing = False
-    with ctrl3:
-        selected_year = st.selectbox(
-            "Current year:",
-            years_list,
-            index=st.session_state.current_index,
-            key="year_selector",
-        )
-        if selected_year != years_list[st.session_state.current_index]:
-            st.session_state.current_index = years_list.index(selected_year)
-            st.session_state.playing = False
-
     animation_placeholder = st.empty()
 
     if st.session_state.playing:
@@ -95,10 +95,8 @@ with col1:
 
 # --- Concurrent Buildings Static Map ---
 with col2:
-    st.markdown("### Concurrent Buildings Count Over Time")
-    cur_year = st.selectbox("Select year:", years_list, key="year_select")
     st.altair_chart(
-        render_yearly_map(cur_year, geojson_data, energy_data, log_scale),
+        render_yearly_map(None, geojson_data, energy_data, log_scale),
         use_container_width=True,
     )
 # END OF DATA COUNT PLOTS #-------------------------------------------------------------------
@@ -110,6 +108,5 @@ st.divider()
 render_dashboard_section(
     metric_list=metrics_list,
     geojson_data=cache_geojson(),
-    special_condition="All",  # resize bar chart when neighborhood == "All"
     key_prefix="Variable",
 )

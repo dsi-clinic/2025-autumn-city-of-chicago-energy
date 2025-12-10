@@ -128,7 +128,6 @@ def cache_build_all_year_charts(
 
 # Graph Helper Functions #-------------------------------------------------------------------
 
-
 def style_matplotlib(fig: Figure, ax: Axes = None) -> None:
     """Apply consistent dark theme styling to Matplotlib figures."""
     # Figure and axes background
@@ -162,7 +161,7 @@ def render_yearly_map(
             legend=alt.Legend(title="Number of Buildings"),
         )
     )
-    return alt.layer(base, overlay).properties(width=600, height=400)
+    return alt.layer(base, overlay).properties(height=600)
 
 
 # grouped charts #-------------------------------------------------------------------s
@@ -170,12 +169,10 @@ def render_yearly_map(
 
 def render_dashboard_section(
     metric_list: list,
-    special_condition: str,
     key_prefix: str,
     energy_data: pd.DataFrame | None = None,
     full_year_list: list | None = None,
     geojson_data: dict | None = None,
-    special_resize: tuple = (8, 10),
 ) -> None:
     """Render a dashboard section with filters, map, bar chart, and line chart.
 
@@ -189,10 +186,6 @@ def render_dashboard_section(
         List of metrics to choose from (e.g. Scores or Utility).
     geojson_data : dict
         GeoJSON data for choropleth plotting.
-    special_condition : str
-        Condition to trigger resizing (e.g. "Chicago Energy Rating" or "All").
-    special_resize : tuple
-        (width, height) for resizing the bar chart when condition is met.
     key_prefix : str
         Prefix for Streamlit widget keys to avoid collisions.
     """
@@ -270,13 +263,29 @@ def render_dashboard_section(
 
     # Graphs ---------------------------------------------------------------
     col1, col2 = st.columns(2)
+
+    # Create three columns: left content, spacer, right content
+    col1, spacer, col2 = st.columns([1, 0.1, 0.9])
+
     with col1:
+        # Map
         map_year_arg = None if trend_year == "Average (All Years)" else int(trend_year)
         agg_df = aggregate_metric(map_filtered, metric)
-        map_chart = plot_choropleth(geojson_data, agg_df, metric, year=map_year_arg)
+        map_chart = plot_choropleth(geojson_data, agg_df, metric, year=map_year_arg).properties(height=600)
         st.altair_chart(map_chart, use_container_width=True)
+        st.markdown("<div style='margin-bottom:20px;'></div>", unsafe_allow_html=True)
+
+        # Trend Line Plot
+        st.markdown(f"##### Trend over time of {metric} by Year Built in {trend_neighborhood}")
+        fig2, ax2 = plot_trend_by_year(com_df, [metric], "mean")[0]
+        style_matplotlib(fig2, ax2)
+        st.pyplot(fig2)
+
+    # The 'spacer' column remains unused, only for spacing
 
     with col2:
+        # Bar Chart
+        st.markdown(f"##### Average {metric} by Property Type in {trend_neighborhood}")
         com_df_b = (
             com_df
             if trend_year == "Average (All Years)"
@@ -286,27 +295,10 @@ def render_dashboard_section(
             data=com_df_b,
             x=metric,
             y="Primary Property Type",
-            title=f"Average {metric} by Property Type in {trend_neighborhood}",
-            show_values=True,
         )
-        for container in ax10.containers:
-            ax10.bar_label(container, fmt="%.0f", fontsize=9, padding=3, color="white")
-
+        fig10.suptitle(f"Mean {metric} by Property Type in {trend_neighborhood}", x=0.5, y=0.98, ha='center', fontsize=12)
+        ax10.set_ylabel("")
+        fig10.set_size_inches(5, 10)
         style_matplotlib(fig10, ax10)
-
-        # Apply special resizing condition
-        if key_prefix == "score":
-            if metric == special_condition:
-                fig10.set_size_inches(*special_resize)
-        else:
-            if trend_neighborhood == special_condition:
-                fig10.set_size_inches(*special_resize)
-
+        fig10.subplots_adjust(top=0.94)
         st.pyplot(fig10)
-
-    # Line chart centered
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        fig2, ax2 = plot_trend_by_year(com_df, [metric], "mean")[0]
-        style_matplotlib(fig2, ax2)
-        st.pyplot(fig2)

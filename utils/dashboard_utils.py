@@ -18,6 +18,20 @@ from utils.plot_utils import (
     plot_trend_by_year,
 )
 
+FACE_COLORS = {
+    "dark": "#0E1117",
+    "light": "#F1F2F6",
+}
+
+LABEL_COLORS = {
+    "dark": "white",
+}
+
+SPINE_COLORS = {
+    "dark": "white",
+}
+
+
 # Page layout #-------------------------------------------------------------------
 
 
@@ -130,20 +144,26 @@ def cache_build_all_year_charts(
 
 def style_matplotlib(fig: Figure, ax: Axes = None) -> None:
     """Apply consistent dark theme styling to Matplotlib figures."""
-    # Figure and axes background
-    fig.patch.set_facecolor("#0E1117")
-    if ax is not None:
-        ax.set_facecolor("#0E1117")
-
-        # Tick labels and axis labels
-        ax.tick_params(colors="white")
-        ax.title.set_color("white")
-        ax.xaxis.label.set_color("white")
-        ax.yaxis.label.set_color("white")
-
-        # Spines (border)
+    # get theme from streamlit
+    theme = st.get_option("theme.base")
+    # Set facecolors
+    if theme in FACE_COLORS:
+        face_color = FACE_COLORS[theme]
+        fig.patch.set_facecolor(face_color)
+        if ax is not None:
+            ax.set_facecolor(face_color)
+    # Set label colors
+    if ax is not None and theme in LABEL_COLORS:
+        label_color = LABEL_COLORS[theme]
+        ax.tick_params(colors=label_color)
+        ax.title.set_color(label_color)
+        ax.xaxis.label.set_color(label_color)
+        ax.yaxis.label.set_color(label_color)
+    # Set spine colors
+    if ax is not None and theme in SPINE_COLORS:
+        spine_color = SPINE_COLORS[theme]
         for spine in ax.spines.values():
-            spine.set_color("white")
+            spine.set_color(spine_color)
 
 
 def render_yearly_map(

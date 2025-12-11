@@ -99,17 +99,13 @@ col1, col2 = st.columns(2)
 with col1:
     agg_df = aggregate_metric(map_filtered_df, selected1)
 
-    eng_map = plot_choropleth(
-        geojson_data, agg_df, selected1, year=map_year_arg
-    )
+    eng_map = plot_choropleth(geojson_data, agg_df, selected1, year=map_year_arg)
     st.altair_chart(eng_map, use_container_width=True)
 
 with col2:
     agg_df = aggregate_metric(map_filtered_df, selected2)
 
-    eng_map = plot_choropleth(
-        geojson_data, agg_df, selected2, year=map_year_arg
-    )
+    eng_map = plot_choropleth(geojson_data, agg_df, selected2, year=map_year_arg)
     st.altair_chart(eng_map, use_container_width=True)
 
 # END of COMPARE METRIC GEOGRAPHIC TRENDS #-------------------------------------------------------------------

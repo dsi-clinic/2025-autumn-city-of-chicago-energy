@@ -142,6 +142,7 @@ def cache_build_all_year_charts(
 
 # Graph Helper Functions #-------------------------------------------------------------------
 
+
 def style_matplotlib(fig: Figure, ax: Axes = None) -> None:
     """Apply consistent dark theme styling to Matplotlib figures."""
     # get theme from streamlit
@@ -291,12 +292,16 @@ def render_dashboard_section(
         # Map
         map_year_arg = None if trend_year == "Average (All Years)" else int(trend_year)
         agg_df = aggregate_metric(map_filtered, metric)
-        map_chart = plot_choropleth(geojson_data, agg_df, metric, year=map_year_arg).properties(height=600)
+        map_chart = plot_choropleth(
+            geojson_data, agg_df, metric, year=map_year_arg
+        ).properties(height=600)
         st.altair_chart(map_chart, use_container_width=True)
         st.markdown("<div style='margin-bottom:20px;'></div>", unsafe_allow_html=True)
 
         # Trend Line Plot
-        st.markdown(f"##### Trend over time of {metric} by Year Built in {trend_neighborhood}")
+        st.markdown(
+            f"##### Trend over time of {metric} by Year Built in {trend_neighborhood}"
+        )
         fig2, ax2 = plot_trend_by_year(com_df, [metric], "mean")[0]
         style_matplotlib(fig2, ax2)
         st.pyplot(fig2)
@@ -316,7 +321,13 @@ def render_dashboard_section(
             x=metric,
             y="Primary Property Type",
         )
-        fig10.suptitle(f"Mean {metric} by Property Type in {trend_neighborhood}", x=0.5, y=0.98, ha='center', fontsize=12)
+        fig10.suptitle(
+            f"Mean {metric} by Property Type in {trend_neighborhood}",
+            x=0.5,
+            y=0.98,
+            ha="center",
+            fontsize=12,
+        )
         ax10.set_ylabel("")
         fig10.set_size_inches(5, 10)
         style_matplotlib(fig10, ax10)

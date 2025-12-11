@@ -182,7 +182,7 @@ def render_yearly_map(
             legend=alt.Legend(title="Number of Buildings"),
         )
     )
-    return alt.layer(base, overlay).properties(height=600)
+    return alt.layer(base, overlay).properties(height=500)
 
 
 # grouped charts #-------------------------------------------------------------------s
@@ -294,7 +294,7 @@ def render_dashboard_section(
         agg_df = aggregate_metric(map_filtered, metric)
         map_chart = plot_choropleth(
             geojson_data, agg_df, metric, year=map_year_arg
-        ).properties(height=600)
+        ).properties(height=500)
         st.altair_chart(map_chart, use_container_width=True)
         st.markdown("<div style='margin-bottom:20px;'></div>", unsafe_allow_html=True)
 
@@ -303,10 +303,10 @@ def render_dashboard_section(
             f"##### Trend over time of {metric} by Year Built in {trend_neighborhood}"
         )
         fig2, ax2 = plot_trend_by_year(com_df, [metric], "mean")[0]
+        ax2.set_title("")
+
         style_matplotlib(fig2, ax2)
         st.pyplot(fig2)
-
-    # The 'spacer' column remains unused, only for spacing
 
     with col2:
         # Bar Chart
@@ -320,13 +320,6 @@ def render_dashboard_section(
             data=com_df_b,
             x=metric,
             y="Primary Property Type",
-        )
-        fig10.suptitle(
-            f"Mean {metric} by Property Type in {trend_neighborhood}",
-            x=0.5,
-            y=0.98,
-            ha="center",
-            fontsize=12,
         )
         ax10.set_ylabel("")
         fig10.set_size_inches(5, 10)

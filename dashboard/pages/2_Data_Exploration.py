@@ -39,7 +39,7 @@ if "current_index" not in st.session_state:
     st.session_state.current_index = 0
 
 # Controls
-ctrl1, _, ctrl2, _, ctrl3, _, ctrl4, _ = st.columns([1, 0.2, 1, 0.2, 1, 0.1, 1, 6])
+ctrl1, _, ctrl2, _, ctrl3, _, ctrl4, _ = st.columns([1, 0.1, 1, 0.1, 1, 0.1, 1, 4.5])
 with ctrl1:
     log_scale = st.checkbox("Use Log Scale", value=False)
 with ctrl2:

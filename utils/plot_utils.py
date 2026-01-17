@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import pandas as pd
 import seaborn as sns
+from statsmodels.regression.linear_model import RegressionResultsWrapper
 
 # ----------Comparable analysis (Bar charts and delta charts)-----------
 
@@ -1508,3 +1509,50 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     )
+
+# ------------------------------------------------------------------
+# fixed effects Functions
+# ------------------------------------------------------------------
+
+
+def plot_model_coefficients(model: RegressionResultsWrapper) -> plt:
+    """Plots the coefficients of the Fixed Effects model to show relative impact."""
+    df_params = pd.DataFrame(
+        {"coef": model.params, "err": model.bse, "name": model.params.index}
+    )
+
+    df_plot = df_params[df_params["name"].str.contains("Rating_Cat")].copy()
+
+    df_plot["clean_name"] = df_plot["name"].apply(
+        lambda x: x.split("T.")[1].replace("]", "") + " Stars"
+    )
+
+    df_plot = df_plot.sort_values("name")
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.errorbar(
+        x=df_plot["coef"],
+        y=df_plot["clean_name"],
+        xerr=1.96 * df_plot["err"],
+        fmt="o",
+        color="teal",
+        ecolor="gray",
+        capsize=5,
+        label="Impact vs 0.0 Star",
+    )
+
+    ax.axvline(x=0, color="red", linestyle="--", label="0.0 Star Baseline")
+
+    ax.set_title(
+        "Relative Change in EUI by Star Rating (Fixed Effects Model)", fontsize=14
+    )
+    ax.set_xlabel(
+        "Difference in Future Change vs. 1-Star Baseline (Positive = Less Savings)",
+        fontsize=12,
+    )
+    ax.grid(True, linestyle=":", alpha=0.6)
+    ax.legend()
+
+    plt.tight_layout()
+    return fig

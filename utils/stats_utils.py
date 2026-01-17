@@ -12,6 +12,12 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from statsmodels.regression.linear_model import RegressionResultsWrapper
 
+from utils.data_utils import (
+    clean_property_type,
+    concurrent_buildings,
+    covid_impact_category,
+)
+
 logger = logging.getLogger(__name__)
 
 PVAL_THRESHOLDS = [0.01, 0.05, 0.1]
@@ -253,3 +259,103 @@ def generate_descriptive_stats_by_year(df: pd.DataFrame) -> pd.DataFrame:
     grouped_stats.index.names = ["Variable", "Statistic"]
 
     return grouped_stats
+
+
+# ------------------------------------------------------------------
+# Mean Reversion/Analysis Functions
+# ------------------------------------------------------------------
+
+
+def prepared_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Load and clean data
+
+    Using concurrent_buildings to ensure longitudinal history for each building to allow for Fixed Effects.
+    """
+    df_clean = concurrent_buildings(df)
+    df_panel = clean_property_type(df_clean)
+    df_panel = covid_impact_category(df_panel)
+
+    return df_panel
+
+
+def prepare_analysis(
+    df_panel: pd.DataFrame,
+    target_col: str,
+    rating_col: str,
+    year: int = 2019,
+) -> pd.DataFrame:
+    """Predictive analysis for Next Year's EUI Change.
+
+    Creates 'Rating_Cat' (String) for modeling and 'Rating_Numeric' (Float) for sorting.
+    """
+    initial_count = len(df_panel)
+    initial_unique_buildings = df_panel["ID"].nunique()
+
+    df_panel = df_panel.sort_values(by=["ID", "Data Year"]).copy()
+
+    df_panel["Current_EUI"] = df_panel[target_col]
+    df_panel["Next_Year_EUI"] = df_panel.groupby("ID")[target_col].shift(-1)
+    df_panel["Future_Change_Raw"] = df_panel["Next_Year_EUI"] - df_panel["Current_EUI"]
+
+    valid_mask = df_panel["Future_Change_Raw"].notna()
+    rows_with_target = valid_mask.sum()
+    surviving_unique_buildings = df_panel.loc[valid_mask, "ID"].nunique()
+    buildings_lost = initial_unique_buildings - surviving_unique_buildings
+
+    if rows_with_target > 0:
+        lower_bound = df_panel["Future_Change_Raw"].quantile(0.01)
+        upper_bound = df_panel["Future_Change_Raw"].quantile(0.99)
+
+        df_panel["Future_Change"] = df_panel["Future_Change_Raw"].clip(
+            lower=lower_bound, upper=upper_bound
+        )
+    else:
+        df_panel["Future_Change"] = df_panel["Future_Change_Raw"]
+
+    df_panel["Rating_Numeric"] = pd.to_numeric(df_panel[rating_col], errors="coerce")
+
+    df_panel["Rating_Cat"] = df_panel["Rating_Numeric"].apply(
+        lambda x: str(x) if pd.notna(x) else None
+    )
+
+    df_panel["Post_Policy"] = (df_panel["Data Year"] >= year).astype(int)
+
+    print("-" * 40)
+    print("DATA ANALYSIS PREP SUMMARY")
+    print("-" * 40)
+    print(f"Initial Total Rows:        {initial_count}")
+    print(f"Initial Unique Buildings:  {initial_unique_buildings}")
+    print("-" * 40)
+    print(f"Rows with Future Change:   {rows_with_target}")
+    print(f"Unique Buildings Retained: {surviving_unique_buildings}")
+    print(f"Unique Buildings Lost: {buildings_lost}")
+    print("-" * 40)
+
+    return df_panel
+
+
+def fixed_effects_analysis(df: pd.DataFrame) -> RegressionResultsWrapper:
+    """Implements Two-Way Fixed Effects (Building & Year)
+
+    Fixes the 'weights and list length' error by syncing data drops.
+    """
+    print("\n--- Model: Two-Way Fixed Effects (Building & Year) ---")
+
+    cols_needed = ["Future_Change", "Rating_Cat", "Current_EUI", "Data Year", "ID"]
+
+    df_fe = df.dropna(subset=cols_needed).copy()
+
+    ref_cat = "0.0"
+    print(f"Using Reference Category: {ref_cat}")
+
+    formula = (
+        f"Future_Change ~ C(Rating_Cat, Treatment(reference='{ref_cat}')) + "
+        "Q('Current_EUI') + C(Q('Data Year'))"
+    )
+
+    model = smf.ols(formula, data=df_fe).fit(
+        cov_type="cluster", cov_kwds={"groups": df_fe["ID"]}
+    )
+
+    print(model.summary())
+    return model

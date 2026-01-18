@@ -284,7 +284,7 @@ def prepare_analysis(
     rating_col: str,
     year: int = 2019,
 ) -> pd.DataFrame:
-    """Predictive analysis for Next Year's EUI Change.
+    """For predictive analysis paired with the fixed_effects_analysis.
 
     Creates 'Rating_Cat' (String) for modeling and 'Rating_Numeric' (Float) for sorting.
     """
@@ -335,9 +335,9 @@ def prepare_analysis(
 
 
 def fixed_effects_analysis(df: pd.DataFrame) -> RegressionResultsWrapper:
-    """Implements Two-Way Fixed Effects (Building & Year)
+    """Implements Two-Way Fixed Effects (Building & Year) with datafame from prepare_analysis function
 
-    Fixes the 'weights and list length' error by syncing data drops.
+    To analyze the impact of star ratings and Data Year
     """
     print("\n--- Model: Two-Way Fixed Effects (Building & Year) ---")
 

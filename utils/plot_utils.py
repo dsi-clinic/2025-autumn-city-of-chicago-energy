@@ -1548,7 +1548,7 @@ def plot_model_coefficients(model: RegressionResultsWrapper) -> plt:
         "Relative Change in EUI by Star Rating (Fixed Effects Model)", fontsize=14
     )
     ax.set_xlabel(
-        "Difference in Future Change vs. 1-Star Baseline (Positive = Less Savings)",
+        "Difference in Future Change vs. 0-Star Baseline (Positive = Less Savings)",
         fontsize=12,
     )
     ax.grid(True, linestyle=":", alpha=0.6)

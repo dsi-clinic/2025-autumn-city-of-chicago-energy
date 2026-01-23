@@ -270,6 +270,9 @@ def prepared_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Load and clean data
 
     Using concurrent_buildings to ensure longitudinal history for each building to allow for Fixed Effects.
+    df: The object of the loaded in dataframe (planned for load_data())
+
+    pd.DataFrame: A dataframe that is cleaned and adds columns to standardize categories
     """
     df_clean = concurrent_buildings(df)
     df_panel = clean_property_type(df_clean)
@@ -282,11 +285,22 @@ def prepare_analysis(
     df_panel: pd.DataFrame,
     target_col: str,
     rating_col: str,
-    year: int = 2019,
+    year: int = POLICY_YEAR,
+    lower_cutoff: float = 0.01,
+    upper_cutoff: float = 0.99,
 ) -> pd.DataFrame:
     """For predictive analysis paired with the fixed_effects_analysis.
 
-    Creates 'Rating_Cat' (String) for modeling and 'Rating_Numeric' (Float) for sorting.
+    df_panel: Base dataframe that will be prepared for longitudinal fixed effects analysis
+    target_col: Chosen colummn that will manipulated for analysis
+    rating_col: Chosen column for 'Rating_Cat' (String) for modeling and 'Rating_Numeric' (Float) for sorting
+    year: The year of interest that will filter everything beforehand
+    lower_cutoff: The lower quantile used in `Future_Change_Raw`to remove any rows below this quantile
+    Helps reduce the influence of unusually large drops.
+    upper_cutoff: The upper quantile used in `Future_Change_Raw`to remove any rows aboce this quantile
+    Helps reduce the influence of unusually large drops.
+
+    pd.DataFrame: Cleaned dataframe to show change year-over-year (Future_Change) for fixed effects modeling
     """
     initial_count = len(df_panel)
     initial_unique_buildings = df_panel["ID"].nunique()
@@ -303,8 +317,8 @@ def prepare_analysis(
     buildings_lost = initial_unique_buildings - surviving_unique_buildings
 
     if rows_with_target > 0:
-        lower_bound = df_panel["Future_Change_Raw"].quantile(0.01)
-        upper_bound = df_panel["Future_Change_Raw"].quantile(0.99)
+        lower_bound = df_panel["Future_Change_Raw"].quantile(lower_cutoff)
+        upper_bound = df_panel["Future_Change_Raw"].quantile(upper_cutoff)
 
         df_panel["Future_Change"] = df_panel["Future_Change_Raw"].clip(
             lower=lower_bound, upper=upper_bound
@@ -338,6 +352,9 @@ def fixed_effects_analysis(df: pd.DataFrame) -> RegressionResultsWrapper:
     """Implements Two-Way Fixed Effects (Building & Year) with datafame from prepare_analysis function
 
     To analyze the impact of star ratings and Data Year
+
+    df: The prepared dataframe made to be paired with this function for fixed-effect analysis
+    RegressionResultsWrapper: The fixed effect statesmodel results
     """
     print("\n--- Model: Two-Way Fixed Effects (Building & Year) ---")
 

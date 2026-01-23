@@ -1515,8 +1515,17 @@ if __name__ == "__main__":
 # ------------------------------------------------------------------
 
 
-def plot_model_coefficients(model: RegressionResultsWrapper) -> plt:
-    """Plots the coefficients of the Fixed Effects model to show relative impact."""
+def plot_fixed_effects_coefficients(
+    model: RegressionResultsWrapper, errorbars: float = 1.96
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plots the coefficients of the Fixed Effects model to show relative impact with error bars
+
+    Parameters:
+    model: An object of a fitted statsmodels regression results
+    errorbars: Numerical value for error bars with 1.96 being for 95% interval
+
+    tuple: returns the fig and ax of the plotS
+    """
     df_params = pd.DataFrame(
         {"coef": model.params, "err": model.bse, "name": model.params.index}
     )
@@ -1534,7 +1543,7 @@ def plot_model_coefficients(model: RegressionResultsWrapper) -> plt:
     ax.errorbar(
         x=df_plot["coef"],
         y=df_plot["clean_name"],
-        xerr=1.96 * df_plot["err"],
+        xerr=errorbars * df_plot["err"],
         fmt="o",
         color="teal",
         ecolor="gray",
@@ -1555,4 +1564,4 @@ def plot_model_coefficients(model: RegressionResultsWrapper) -> plt:
     ax.legend()
 
     plt.tight_layout()
-    return fig
+    return fig, ax

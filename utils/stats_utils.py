@@ -13,6 +13,8 @@ import statsmodels.formula.api as smf
 from statsmodels.regression.linear_model import RegressionResultsWrapper
 
 from utils.data_utils import (
+    assign_effective_year_built,
+    categorize_time_built,
     clean_property_type,
     concurrent_buildings,
     covid_impact_category,
@@ -277,6 +279,8 @@ def prepared_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df_clean = concurrent_buildings(df)
     df_panel = clean_property_type(df_clean)
     df_panel = covid_impact_category(df_panel)
+    df_panel = assign_effective_year_built(df_panel)
+    df_panel = categorize_time_built(df_panel)
 
     return df_panel
 
@@ -376,3 +380,40 @@ def fixed_effects_analysis(df: pd.DataFrame) -> RegressionResultsWrapper:
 
     print(model.summary())
     return model
+
+
+def run_sensitivity_models(df: pd.DataFrame) -> RegressionResultsWrapper:
+    """Runs the 4-tiered sensitivity analysis.
+
+    Inputs:
+        - df: the prepared dataframe that uses prepare_analysis()
+
+    Returns:
+        A Dictionary where:
+        - Keys = Model Names (strings)
+        - Values = Fitted Statsmodels Objects (RegressionResultsWrapper)
+    """
+    formulas = {
+        "1. Base Star Rating": "Future_Change ~ C(Rating_Cat, Treatment(reference='0.0'))",
+        "2. +Control (EUI)": "Future_Change ~ C(Rating_Cat, Treatment(reference='0.0')) + Q('Current_EUI')",
+        "3. +Control (EUI + Year)": "Future_Change ~ C(Rating_Cat, Treatment(reference='0.0')) + Q('Current_EUI') + C(Q('Data Year'))",
+        "4. +Control (EUI + Year + Age)": "Future_Change ~ C(Rating_Cat, Treatment(reference='0.0')) + Q('Current_EUI') + C(Q('Data Year')) + C(Q('Time Built'))",
+    }
+
+    fitted_models = {}
+
+    print(f"{'Status':<20} | {'Model Name'}")
+    print("-" * 40)
+
+    for name, formula_str in formulas.items():
+        try:
+            # Call the Engine
+            model = smf.ols(formula_str, data=df).fit(cov_type="HC1")
+            print(model.summary())
+            # Store the actual model object
+            fitted_models[name] = model
+
+        except Exception as e:
+            print(f"{'Failed':<20} | {name} -> {e}")
+
+    return fitted_models

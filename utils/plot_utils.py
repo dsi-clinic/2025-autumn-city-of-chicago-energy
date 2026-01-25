@@ -1526,8 +1526,15 @@ def plot_fixed_effects_coefficients(
 
     tuple: returns the fig and ax of the plotS
     """
+    three_star_cutoff = 0.001
+    one_star_cutoff = 0.05
     df_params = pd.DataFrame(
-        {"coef": model.params, "err": model.bse, "name": model.params.index}
+        {
+            "coef": model.params,
+            "err": model.bse,
+            "pval": model.pvalues,
+            "name": model.params.index,
+        }
     )
 
     df_plot = df_params[df_params["name"].str.contains("Rating_Cat")].copy()
@@ -1549,19 +1556,44 @@ def plot_fixed_effects_coefficients(
         ecolor="gray",
         capsize=5,
         label="Impact vs 0.0 Star",
+        markersize=8,
     )
+
+    for idx, row in df_plot.iterrows():
+        if row["pval"] < three_star_cutoff:
+            p_text = "p < 0.001 ***"
+            weight = "bold"
+        elif row["pval"] < one_star_cutoff:
+            p_text = f"p = {row['pval']:.3f} *"
+            weight = "bold"
+        else:
+            p_text = f"p = {row['pval']:.3f}"
+            weight = "normal"
+
+        ax.text(
+            x=row["coef"],
+            y=df_plot.index.get_loc(idx) + 0.15,
+            s=p_text,
+            fontsize=9,
+            color="darkslategray",
+            ha="center",
+            fontweight=weight,
+            bbox={"facecolor": "white", "alpha": 0.5, "edgecolor": "none", "pad": 0},
+        )
 
     ax.axvline(x=0, color="red", linestyle="--", label="0.0 Star Baseline")
 
-    ax.set_title(
-        "Relative Change in EUI by Star Rating (Fixed Effects Model)", fontsize=14
-    )
+    ax.set_title("Relative Change in EUI by Star Rating (Fixed Effects)", fontsize=14)
     ax.set_xlabel(
         "Difference in Future Change vs. 0-Star Baseline (Positive = Less Savings)",
         fontsize=12,
     )
+
     ax.grid(True, linestyle=":", alpha=0.6)
-    ax.legend()
+
+    ax.set_ylim(-0.5, len(df_plot) - 0.5)
+
+    ax.legend(loc="lower right")
 
     plt.tight_layout()
     return fig, ax

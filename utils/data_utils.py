@@ -655,3 +655,216 @@ def load_national_eui_data() -> dict:
         "National_Median_Source_EUI": [142.1, 138.7, 124.1, 121.8, 118.1, 114.1],
     }
     return pd.DataFrame(national_data)
+
+
+def load_covered_buildings() -> pd.DataFrame:
+    """Load and clean the Chicago Energy Benchmarking *Covered Buildings* dataset.
+
+    The dataset is loaded from CSV files located in
+    DATA_DIR / 'chicago_energy_benchmarking_covered' and is expected
+    to contain:
+      - A unique Chicago Energy Benchmarking ID per property
+      - Cohort / size information
+      - Community Area, address, lat/long, etc.
+    """
+    path = DATA_DIR / "chicago_covered_buildings"
+
+    # Backup absolute path for notebook use
+    if not path.exists():
+        path = Path("/project") / "data" / "chicago_covered_buildings"
+
+    if not path.exists():
+        raise FileNotFoundError(f"Covered Buildings data directory not found: {path}")
+
+    csv_files = list(path.glob("*.csv"))
+    if not csv_files:
+        raise FileNotFoundError(f"No CSV files found in {path}")
+
+    load_dfs = [pd.read_csv(file) for file in csv_files]
+    covered_df = pd.concat(load_dfs, ignore_index=True)
+
+    # Normalize column names once here to match your benchmarking data
+    col_renames = {
+        "Building ID": "ID",
+        "Verification Year": "Data Year",
+    }
+
+    covered_df = covered_df.rename(columns=col_renames)
+
+    # Lowercase string-like columns for consistency
+    for col in covered_df.select_dtypes(include="object").columns:
+        covered_df[col] = covered_df[col].astype(str).str.lower().str.strip()
+
+    # Ensure numeric types where relevant
+    if "Data Year" in covered_df.columns:
+        covered_df["Data Year"] = pd.to_numeric(
+            covered_df["Data Year"], errors="coerce"
+        )
+
+    return covered_df
+
+
+def find_out_of_compliance(
+    start_year: int = 2016,
+    end_year: int = 2023,
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+) -> pd.DataFrame:
+    """Identify buildings assumed covered in a year but missing in reporting.
+
+    Coverage is inferred by treating all buildings in the covered list
+    as covered in every year from start_year through end_year, ignoring
+    the verification year. Returns one row per (ID, year) where the
+    building is covered but does not appear in the reporting data.
+    """
+    covered_expanded = expand_covered_buildings(
+        start_year=start_year,
+        end_year=end_year,
+        id_col=id_col,
+    )
+
+    reported = load_data()
+
+    # Normalize types
+    covered_expanded[id_col] = covered_expanded[id_col].astype(str).str.strip()
+    reported[id_col] = reported[id_col].astype(str).str.strip()
+
+    covered_expanded[year_col] = pd.to_numeric(
+        covered_expanded[year_col], errors="coerce"
+    ).astype("Int64")
+    reported[year_col] = pd.to_numeric(reported[year_col], errors="coerce").astype(
+        "Int64"
+    )
+
+    covered_expanded = covered_expanded[
+        (covered_expanded[year_col] >= start_year)
+        & (covered_expanded[year_col] <= end_year)
+    ].copy()
+    reported = reported[
+        (reported[year_col] >= start_year) & (reported[year_col] <= end_year)
+    ].copy()
+
+    # Unique (ID, year) pairs
+    covered_pairs = covered_expanded[[id_col, year_col]].drop_duplicates()
+    reported_pairs = reported[[id_col, year_col]].drop_duplicates()
+
+    merged = covered_pairs.merge(
+        reported_pairs,
+        on=[id_col, year_col],
+        how="left",
+        indicator=True,
+    )
+
+    missing_pairs = merged[merged["_merge"] == "left_only"][[id_col, year_col]].rename(
+        columns={year_col: "Missing Year"}
+    )
+
+    # Attach attributes from covered list
+    attrs_cols = [
+        id_col,
+        year_col,
+        "Cohort - Sector",
+        "Cohort - Size",
+        "Community Area Name",
+        "Community Area Number",
+        "Ward",
+        "Latitude",
+        "Longitude",
+        "Location",
+    ]
+    attrs_cols = [c for c in attrs_cols if c in covered_expanded.columns]
+
+    covered_attrs = covered_expanded[attrs_cols].drop_duplicates(
+        subset=[id_col, year_col]
+    )
+
+    out_of_compliance = (
+        missing_pairs.merge(
+            covered_attrs,
+            left_on=[id_col, "Missing Year"],
+            right_on=[id_col, year_col],
+            how="left",
+        )
+        .drop(columns=[year_col], errors="ignore")
+        .drop_duplicates()
+    )
+
+    return out_of_compliance
+
+
+def expand_covered_buildings(
+    start_year: int,
+    end_year: int,
+    id_col: str = "ID",
+) -> pd.DataFrame:
+    """Treat every building in the covered list as covered in every year.
+
+    Buildings are assumed covered from start_year through end_year, and
+    mere presence in the covered list is interpreted as being subject
+    to the ordinance.
+    """
+    covered = load_covered_buildings().copy()
+
+    # Normalize ID
+    covered[id_col] = covered[id_col].astype(str).str.strip()
+
+    # Drop any duplicate IDs (keep first row as canonical attributes)
+    covered_unique = covered.drop_duplicates(subset=[id_col]).copy()
+
+    records = []
+    for _, row in covered_unique.iterrows():
+        for y in range(start_year, end_year + 1):
+            r = row.to_dict()
+            r["Data Year"] = y  # synthetic coverage year, not the verification year
+            records.append(r)
+
+    expanded = pd.DataFrame.from_records(records)
+
+    return expanded
+
+
+def clean_year_built(
+    energy_df: pd.DataFrame,
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+    year_built_col: str = "Year Built",
+) -> pd.DataFrame:
+    """Clean 'Year Built' for each building (ID), sorted by Data Year ascending.
+
+    Rules:
+    - Maintain a 'current' Year Built value as we move forward in time.
+    - If a row has Year Built == Data Year (rebuild year), set current = Data Year.
+    - If a row has a non-null Year Built != Data Year and current is still null,
+      use that as the initial current value.
+    - For every row, if current is not null, set Year Built = current.
+    """
+    cleaned_df = energy_df.copy()
+    cleaned_df[year_built_col] = pd.to_numeric(
+        cleaned_df[year_built_col], errors="coerce"
+    )
+    cleaned_df[year_col] = pd.to_numeric(cleaned_df[year_col], errors="coerce")
+
+    def fix_building(group: pd.DataFrame) -> pd.DataFrame:
+        group = group.sort_values(year_col).copy()
+        current: float | None = None
+        cleaned_values: list[float | None] = []
+
+        for _, row in group.iterrows():
+            year = row[year_col]
+            year_built = row[year_built_col]
+
+            if pd.notna(year_built) and pd.notna(year) and year_built == year:
+                # rebuild in this year: from now on use this year
+                current = year_built
+            elif current is None and pd.notna(year_built):
+                # first known value before any rebuild year
+                current = year_built
+
+            cleaned_values.append(current if current is not None else year_built)
+
+        group[year_built_col] = cleaned_values
+        return group
+
+    cleaned_df = cleaned_df.groupby(id_col, group_keys=False).apply(fix_building)
+
+    return cleaned_df

@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import pandas as pd
 import seaborn as sns
+from statsmodels.regression.linear_model import RegressionResultsWrapper
 
 # ----------Comparable analysis (Bar charts and delta charts)-----------
 
@@ -1508,3 +1509,91 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     )
+
+# ------------------------------------------------------------------
+# fixed effects Functions
+# ------------------------------------------------------------------
+
+
+def plot_fixed_effects_coefficients(
+    model: RegressionResultsWrapper, errorbars: float = 1.96
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plots the coefficients of the Fixed Effects model to show relative impact with error bars
+
+    Parameters:
+    model: An object of a fitted statsmodels regression results
+    errorbars: Numerical value for error bars with 1.96 being for 95% interval
+
+    tuple: returns the fig and ax of the plotS
+    """
+    three_star_cutoff = 0.001
+    one_star_cutoff = 0.05
+    df_params = pd.DataFrame(
+        {
+            "coef": model.params,
+            "err": model.bse,
+            "pval": model.pvalues,
+            "name": model.params.index,
+        }
+    )
+
+    df_plot = df_params[df_params["name"].str.contains("Rating_Cat")].copy()
+
+    df_plot["clean_name"] = df_plot["name"].apply(
+        lambda x: x.split("T.")[1].replace("]", "") + " Stars"
+    )
+
+    df_plot = df_plot.sort_values("name")
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.errorbar(
+        x=df_plot["coef"],
+        y=df_plot["clean_name"],
+        xerr=errorbars * df_plot["err"],
+        fmt="o",
+        color="teal",
+        ecolor="gray",
+        capsize=5,
+        label="Impact vs 0.0 Star",
+        markersize=8,
+    )
+
+    for idx, row in df_plot.iterrows():
+        if row["pval"] < three_star_cutoff:
+            p_text = "p < 0.001 ***"
+            weight = "bold"
+        elif row["pval"] < one_star_cutoff:
+            p_text = f"p = {row['pval']:.3f} *"
+            weight = "bold"
+        else:
+            p_text = f"p = {row['pval']:.3f}"
+            weight = "normal"
+
+        ax.text(
+            x=row["coef"],
+            y=df_plot.index.get_loc(idx) + 0.15,
+            s=p_text,
+            fontsize=9,
+            color="darkslategray",
+            ha="center",
+            fontweight=weight,
+            bbox={"facecolor": "white", "alpha": 0.5, "edgecolor": "none", "pad": 0},
+        )
+
+    ax.axvline(x=0, color="red", linestyle="--", label="0.0 Star Baseline")
+
+    ax.set_title("Relative Change in EUI by Star Rating (Fixed Effects)", fontsize=14)
+    ax.set_xlabel(
+        "Difference in Future Change vs. 0-Star Baseline (Positive = Less Savings)",
+        fontsize=12,
+    )
+
+    ax.grid(True, linestyle=":", alpha=0.6)
+
+    ax.set_ylim(-0.5, len(df_plot) - 0.5)
+
+    ax.legend(loc="lower right")
+
+    plt.tight_layout()
+    return fig, ax

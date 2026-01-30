@@ -868,3 +868,75 @@ def clean_year_built(
     cleaned_df = cleaned_df.groupby(id_col, group_keys=False).apply(fix_building)
 
     return cleaned_df
+
+
+# Filter reported buildings
+def filter_buildings_reported(
+    energy_data: pd.DataFrame,
+    energy_cols: list[str],
+    reporting_status_col: str = "Reporting Status",
+    allowed_statuses: list[str] | None = None,
+    require_any_energy: bool = True,
+) -> pd.DataFrame:
+    """Filter energy benchmarking data to rows that count as 'reported'.
+
+    A row is kept if:
+      - It has at least one non-null energy/emissions metric (by default), AND
+      - Its reporting status is in `allowed_statuses`
+
+    Returns:
+    -------
+    pd.DataFrame
+        Filtered dataframe of reported buildings.
+    """
+    if allowed_statuses is None:
+        allowed_statuses = ["submitted", "submitted data", "nan"]
+
+    missing_energy_cols = [c for c in energy_cols if c not in energy_data.columns]
+    if missing_energy_cols:
+        raise KeyError(f"Missing energy columns: {missing_energy_cols}")
+
+    data = energy_data.copy()
+    status_mask = data[reporting_status_col].isin(allowed_statuses)
+
+    if require_any_energy:
+        energy_mask = data[energy_cols].notna().any(axis=1)
+    else:
+        energy_mask = pd.Series(True, index=data.index)
+
+    reported = data[status_mask & energy_mask].copy()
+    return reported
+
+
+def compliance_by_category(
+    energy_data: pd.DataFrame,
+    energy_reported: pd.DataFrame,
+    year: int,
+    category_col: str,
+    year_col: str = "Data Year",
+    id_col: str = "ID",
+) -> pd.DataFrame:
+    """Compute compliance and non-compliance rates by a categorical variable
+
+    (e.g., property type or sector) for a given year.
+    """
+    all_year = energy_data[energy_data[year_col] == year].copy()
+    reported_year = energy_reported[energy_reported[year_col] == year].copy()
+    compliant_ids = set(reported_year[id_col])
+
+    all_year["compliance_status"] = all_year[id_col].apply(
+        lambda x: "compliant" if x in compliant_ids else "non_compliant"
+    )
+
+    summary = all_year.pivot_table(
+        index=category_col,
+        columns="compliance_status",
+        values=id_col,
+        aggfunc="count",
+        fill_value=0,
+    ).reset_index()
+
+    summary["total"] = summary["compliant"] + summary["non_compliant"]
+    summary["non_compliance_rate"] = summary["non_compliant"] / summary["total"]
+
+    return summary.sort_values("total", ascending=False)

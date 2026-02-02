@@ -102,6 +102,7 @@ def concurrent_buildings(
     building_type: list | None = None,
     status_col: str = "Reporting Status",
     submitted_label: str = "submitted",
+    status_year: int = 2018,
 ) -> pd.DataFrame:
     """Filter buildings that have submitted data for all years in a specified range.
 
@@ -118,24 +119,22 @@ def concurrent_buildings(
 
     # Optional filter by building type
     if building_type:
-        df_in_range = df_in_range[
-            df_in_range[building_type_col].isin(building_type)
-        ]
+        df_in_range = df_in_range[df_in_range[building_type_col].isin(building_type)]
 
     if status_col in df_in_range.columns:
         df_in_range[status_col] = df_in_range[status_col].str.strip().str.lower()
-        df_in_range[status_col] = df_in_range[status_col].replace("submitted data", "submitted")
+        df_in_range[status_col] = df_in_range[status_col].replace(
+            "submitted data", "submitted"
+        )
 
     # For years >= 2018, require Reporting Status in submitted_labels
     if status_col in df_in_range.columns:
-        mask_pre_2018 = df_in_range[year_col] < 2018
-        mask_2018_plus = df_in_range[year_col] >= 2018
+        mask_pre_2018 = df_in_range[year_col] < status_year
+        mask_2018_plus = df_in_range[year_col] >= status_year
 
         # keep all pre-2018 rows; filter 2018+ to submitted
         mask_submitted = df_in_range[status_col] == submitted_label
-        df_in_range = df_in_range[
-            mask_pre_2018 | (mask_2018_plus & mask_submitted)
-        ]
+        df_in_range = df_in_range[mask_pre_2018 | (mask_2018_plus & mask_submitted)]
 
     required_years = set(range(start_year, end_year + 1))
 
@@ -143,16 +142,12 @@ def concurrent_buildings(
 
     # Unique years per building
     building_years = (
-        df_in_range.groupby(id_col)[year_col]
-        .unique()
-        .reset_index(name="Years")
+        df_in_range.groupby(id_col)[year_col].unique().reset_index(name="Years")
     )
 
     # Buildings that have submitted in every required year
     buildings_all_years = building_years[
-        building_years["Years"].apply(
-            lambda years: required_years.issubset(set(years))
-        )
+        building_years["Years"].apply(lambda years: required_years.issubset(set(years)))
     ]
 
     # Keep only those buildings, within year range
@@ -161,9 +156,7 @@ def concurrent_buildings(
     ].copy()
 
     # Ensure one row per building-year
-    filtered_df = filtered_df.drop_duplicates(
-        subset=[id_col, year_col], keep="first"
-    )
+    filtered_df = filtered_df.drop_duplicates(subset=[id_col, year_col], keep="first")
 
     return filtered_df
 

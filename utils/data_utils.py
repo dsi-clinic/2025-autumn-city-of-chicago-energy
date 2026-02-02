@@ -99,63 +99,63 @@ def concurrent_buildings(
     id_col: str = "ID",
     year_col: str = "Data Year",
     building_type_col: str = "Primary Property Type",
-    building_type: list = None,
+    building_type: list | None = None,
+    status_col: str = "Reporting Status",
+    submitted_label: str = "submitted",
+    status_year: int = 2018,
 ) -> pd.DataFrame:
-    """Filter buildings that have submitted data for all years in a specified range, keeping only records within that range.
+    """Filter buildings that have submitted data for all years in a specified range.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The energy dataset containing at least building ID and year columns.
-    start_year : int, default = 2016
-        The first year in the required range (inclusive).
-    end_year : int, default = 2023
-        The last year in the required range (inclusive).
-    id_col : str, default="ID"
-        The column name that identifies unique buildings.
-    year_col : str, default="Data Year"
-        The column name indicating the year of the data entry.
-    building_type_col : str, default="Primary Property Type"
-        The column name for the building type.
-    building_type : list, default=[]
-        A list of building types to include. If empty, all types are included.
-
-    Returns:
-    -------
-    pd.DataFrame
-        A filtered DataFrame containing only records of buildings that have
-        data submitted for all years in the specified range, restricted to data within that range.
+    Only records within [start_year, end_year] are kept. For years >= 2018,
+    only rows whose reporting status matches one of the `submitted_labels`
+    are considered.
     """
     if input_df is None:
         input_df = load_data()
 
-    required_years = set(range(start_year, end_year + 1))
-
-    # Restrict to years within the desired range first
     df_in_range = input_df[
         (input_df[year_col] >= start_year) & (input_df[year_col] <= end_year)
-    ]
+    ].copy()
 
-    # Optionally filter by building type if list is provided
+    # Optional filter by building type
     if building_type:
         df_in_range = df_in_range[df_in_range[building_type_col].isin(building_type)]
 
-    # Group by building ID and collect unique years
+    if status_col in df_in_range.columns:
+        df_in_range[status_col] = df_in_range[status_col].str.strip().str.lower()
+        df_in_range[status_col] = df_in_range[status_col].replace(
+            "submitted data", "submitted"
+        )
+
+    # For years >= 2018, require Reporting Status in submitted_labels
+    if status_col in df_in_range.columns:
+        mask_pre_2018 = df_in_range[year_col] < status_year
+        mask_2018_plus = df_in_range[year_col] >= status_year
+
+        # keep all pre-2018 rows; filter 2018+ to submitted
+        mask_submitted = df_in_range[status_col] == submitted_label
+        df_in_range = df_in_range[mask_pre_2018 | (mask_2018_plus & mask_submitted)]
+
+    required_years = set(range(start_year, end_year + 1))
+
+    required_years = set(range(start_year, end_year + 1))
+
+    # Unique years per building
     building_years = (
         df_in_range.groupby(id_col)[year_col].unique().reset_index(name="Years")
     )
 
-    # Keep only those with full year coverage
+    # Buildings that have submitted in every required year
     buildings_all_years = building_years[
         building_years["Years"].apply(lambda years: required_years.issubset(set(years)))
     ]
 
-    # Filter the dataset to only those buildings and within year range
+    # Keep only those buildings, within year range
     filtered_df = df_in_range[
         df_in_range[id_col].isin(buildings_all_years[id_col])
     ].copy()
 
-    # Ensure no duplicates (e.g., multiple entries for same building-year)
+    # Ensure one row per building-year
     filtered_df = filtered_df.drop_duplicates(subset=[id_col, year_col], keep="first")
 
     return filtered_df

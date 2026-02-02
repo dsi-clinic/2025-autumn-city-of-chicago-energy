@@ -1504,6 +1504,123 @@ def plot_metric_change_map(
     return charts
 
 
+def noncompliance_choropleth_by_year(
+    energy_data: pd.DataFrame,
+    energy_reported: pd.DataFrame,
+    chi_geo: dict,
+    year: int,
+    year_col: str = "Data Year",
+    id_col: str = "ID",
+    area_name_col: str = "Community Area",
+    geo_area_name_key: str = "properties.community",
+    color_field: str = "non_compliance_rate",
+    scheme: str = "reds",
+    domain: tuple[float, float] | None = None,
+    width: int = 650,
+    height: int = 550,
+    title: str | None = None,
+) -> tuple[alt.Chart, pd.DataFrame]:
+    """Denominator (total) = unique building IDs present in energy_18_22 for that year
+
+    Compliant = unique building IDs present in energy_reported_18_22 for that year (your compliance rule)
+    Non-compliant = total - compliant
+
+    Returns: (alt.Chart, area_table)
+    """
+
+    # normalize community area names
+    def norm_area(x: str | None) -> str | None:
+        if pd.isna(x):
+            return pd.NA
+        return str(x).strip().upper()
+
+    base_y = energy_data.loc[
+        energy_data[year_col] == year, [id_col, area_name_col]
+    ].copy()
+    comp_y = energy_reported.loc[energy_reported[year_col] == year, [id_col]].copy()
+
+    base_y["_area_norm"] = base_y[area_name_col].apply(norm_area)
+    base_y["_id_int"] = pd.to_numeric(base_y[id_col], errors="coerce")
+    comp_y["_id_int"] = pd.to_numeric(comp_y[id_col], errors="coerce")
+
+    base_y["_id_int"] = base_y["_id_int"].astype(int)
+    comp_y["_id_int"] = comp_y["_id_int"].astype(int)
+    compliant_ids = set(comp_y["_id_int"].unique())
+
+    base_y = base_y.drop_duplicates(subset=["_area_norm", "_id_int"])
+    base_y["is_compliant"] = base_y["_id_int"].isin(compliant_ids)
+
+    area = (
+        base_y.groupby("_area_norm")["is_compliant"]
+        .agg(compliant="sum", total="size")
+        .reset_index()
+        .rename(columns={"_area_norm": "Community Area"})
+    )
+    area["non_compliant"] = area["total"] - area["compliant"]
+    area["non_compliance_rate"] = area["non_compliant"] / area["total"].replace(
+        0, pd.NA
+    )
+
+    if color_field not in area.columns:
+        raise ValueError(
+            f"color_field='{color_field}' not found. Choose from: {list(area.columns)}"
+        )
+
+    if title is None:
+        pretty = {
+            "non_compliant": "Non-Compliant Buildings (Count)",
+            "non_compliance_rate": "Non-Compliance Rate",
+            "compliant": "Compliant Buildings (Count)",
+            "total": "Total Buildings (Denominator)",
+        }.get(color_field, color_field)
+        title = f"{pretty} by Community Area ({year})"
+
+    scale = (
+        alt.Scale(scheme=scheme)
+        if domain is None
+        else alt.Scale(scheme=scheme, domain=list(domain))
+    )
+
+    chart = (
+        alt.Chart(alt.Data(values=chi_geo["features"]))
+        .mark_geoshape(stroke="white", strokeWidth=0.5)
+        .project(type="mercator")
+        .transform_lookup(
+            lookup=geo_area_name_key,
+            from_=alt.LookupData(
+                area,
+                key="Community Area",
+                fields=[
+                    "compliant",
+                    "non_compliant",
+                    "total",
+                    "non_compliance_rate",
+                    color_field,
+                ],
+            ),
+        )
+        .encode(
+            color=alt.Color(
+                f"{color_field}:Q",
+                title=color_field.replace("_", " ").title(),
+                scale=scale,
+            ),
+            tooltip=[
+                alt.Tooltip(f"{geo_area_name_key}:N", title="Community Area"),
+                alt.Tooltip("compliant:Q", title="Compliant"),
+                alt.Tooltip("non_compliant:Q", title="Non-Compliant"),
+                alt.Tooltip("total:Q", title="Total"),
+                alt.Tooltip(
+                    "non_compliance_rate:Q", title="Non-Compliance Rate", format=".1%"
+                ),
+            ],
+        )
+        .properties(width=width, height=height, title=title)
+    )
+
+    return chart, area
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,

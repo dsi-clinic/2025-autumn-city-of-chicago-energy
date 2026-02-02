@@ -352,6 +352,47 @@ def prepare_analysis(
     return df_panel
 
 
+def extract_model_coefficients(formula_list: list) -> pd.DataFrame:
+    """Helper function to extract coefficients, errors, and p-values
+
+    specifically for Star Ratings from a list of Statsmodels results.
+    Input:
+    - List of tuples
+    - Within tuple -> (RegressionResultsWrapper, 'Formula Name')
+    """
+    df_list = []
+
+    for model, formula_name in formula_list:
+        rating_coefs = model.params[model.params.index.str.contains("Rating_Cat")]
+
+        if rating_coefs.empty:
+            continue
+
+        df_params = pd.DataFrame(
+            {
+                "name": rating_coefs.index,
+                "coef": rating_coefs.to_numpy(),
+                "err": model.bse[rating_coefs.index].to_numpy(),
+                "pval": model.pvalues[rating_coefs.index].to_numpy(),
+                "formula": formula_name,
+            }
+        )
+        df_list.append(df_params)
+
+    if not df_list:
+        raise ValueError(
+            "No coefficients found matching 'Rating_Cat'. Check model formulas."
+        )
+
+    df_full = pd.concat(df_list, ignore_index=True)
+
+    df_full["star_rating"] = (
+        df_full["name"].str.extract(r"\[T\.([\d\.]+)\]").astype(float)
+    )
+
+    return df_full
+
+
 def fixed_effects_analysis(df: pd.DataFrame) -> RegressionResultsWrapper:
     """Implements Two-Way Fixed Effects (Building & Year) with datafame from prepare_analysis function
 
@@ -417,3 +458,45 @@ def run_sensitivity_models(df: pd.DataFrame) -> RegressionResultsWrapper:
             print(f"{'Failed':<20} | {name} -> {e}")
 
     return fitted_models
+
+
+def binning_rating(score: float) -> float:
+    """Converts an ENERGY STAR score into a discrete Energy Rating placard bin.
+
+    This mapping follows the Chicago Energy Rating criteria where scores
+    are binned into half-point increments from 1.0 to 4.0.
+
+    Args:
+        score (Optional[float]): The ENERGY STAR score (typically 1-100).
+            Can be None or NaN.
+
+    Returns:
+        float: The placard rating (0.0 for missing, 1.0-4.0 for valid scores).
+    """
+    NA_RATING = 0.0
+    ONE_STAR_MAX = 30
+    ONE_HALF_STAR_MAX = 40
+    TWO_STAR_MAX = 50
+    TWO_HALF_STAR_MAX = 60
+    THREE_STAR_MAX = 70
+    THREE_HALF_STAR_MAX = 80
+    FOUR_STAR_MAX = 100
+
+    if pd.isna(score):
+        return NA_RATING
+    if score <= ONE_STAR_MAX:
+        return 1.0
+    if score <= ONE_HALF_STAR_MAX:
+        return 1.5
+    if score <= TWO_STAR_MAX:
+        return 2.0
+    if score <= TWO_HALF_STAR_MAX:
+        return 2.5
+    if score <= THREE_STAR_MAX:
+        return 3.0
+    if score <= THREE_HALF_STAR_MAX:
+        return 3.5
+    if score <= FOUR_STAR_MAX:
+        return 4.0
+
+    return NA_RATING

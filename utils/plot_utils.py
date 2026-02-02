@@ -17,9 +17,12 @@ from collections.abc import Callable, Iterable
 import altair as alt
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import numpy as np
 import pandas as pd
 import seaborn as sns
 from statsmodels.regression.linear_model import RegressionResultsWrapper
+
+from utils.stats_utils import extract_model_coefficients
 
 # ----------Comparable analysis (Bar charts and delta charts)-----------
 
@@ -1714,3 +1717,128 @@ def plot_fixed_effects_coefficients(
 
     plt.tight_layout()
     return fig, ax
+
+
+def plotting_FE_star_coef(formula_list: list) -> plt.Figure:
+    """Plotting the change of Star score coefficients from different formulas
+
+    Orientation:
+    - X axis: Formula name (Categorical)
+    - Y axis: Coefficient Value (Numeric)
+
+    Input:
+    - List of tuples
+    - Within tuple -> (RegressionResultsWrapper, 'Formula Name')
+    """
+    # --- 1. DATA PREP ---
+    df_coef = extract_model_coefficients(formula_list)
+
+    bins = [0, 0.001, 0.01, 0.05, 0.1, 1.0]
+    labels = ["p < 0.001", "p < 0.01", "p < 0.05", "p < 0.10", "p ≥ 0.10"]
+    df_coef["sig_category"] = pd.cut(
+        df_coef["pval"], bins=bins, labels=labels, include_lowest=True
+    )
+
+    color_map = {
+        "p < 0.001": "#004500",
+        "p < 0.01": "#079F07",
+        "p < 0.05": "#63E863",
+        "p < 0.10": "#FFD700",
+        "p ≥ 0.10": "#D3D3D3",
+    }
+    df_coef["color"] = df_coef["sig_category"].map(color_map)
+
+    # --- 2. PLOT SETUP ---
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    formulas = df_coef["formula"].unique()
+    star_ratings = sorted(df_coef["star_rating"].unique())
+
+    x_map = {f: i for i, f in enumerate(formulas)}
+    df_coef["x"] = df_coef["formula"].map(x_map)
+
+    line_colors = dict(
+        zip(star_ratings, plt.cm.tab10(np.linspace(0, 1, len(star_ratings))))
+    )
+
+    # --- 3. PLOTTING ---
+    for star in star_ratings:
+        sub = df_coef[df_coef["star_rating"] == star].sort_values("x")
+        ax.plot(sub["x"], sub["coef"], color=line_colors[star], lw=1, zorder=1)
+
+    df_coef = df_coef.sort_values("pval", ascending=False)
+    ax.scatter(
+        df_coef["x"],
+        df_coef["coef"],
+        s=100,
+        c=df_coef["color"],
+        edgecolors="black",
+        alpha=0.9,
+        zorder=2,
+    )
+
+    # --- 4. FORMATTING ---
+    ax.set_xticks(list(x_map.values()))
+    ax.set_xticklabels(list(x_map.keys()), ha="right")
+
+    ax.set_ylabel(
+        "Coefficient Value of EUI Change (Reference: 0 Stars)",
+        fontsize=12,
+        fontweight="bold",
+    )
+
+    ax.set_title(
+        "Change of Star Rating Coefficients Across Model Specifications",
+        fontsize=14,
+        fontweight="bold",
+        pad=20,
+    )
+
+    ax.grid(True, alpha=0.5, axis="y", linestyle="--")
+    ax.axhline(y=0, color="black", linestyle="--", linewidth=1)
+
+    # --- 5. LEGENDS ---
+    star_handles = [
+        ax.plot(
+            [],
+            [],
+            marker="o",
+            ls="None",
+            color=line_colors[s],
+            label=f"{s} Stars",
+            markersize=10,
+        )[0]
+        for s in star_ratings
+    ]
+
+    l1 = ax.legend(
+        handles=star_handles,
+        title="Star Rating",
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1),
+    )
+
+    sig_handles = []
+    for label in labels:
+        if label in color_map:
+            h = ax.scatter(
+                [],
+                [],
+                c=color_map[label],
+                label=label.replace(" ", ""),
+                s=100,
+                edgecolors="black",
+            )
+            sig_handles.append(h)
+
+    ax.legend(
+        handles=sig_handles,
+        title="Significance",
+        loc="upper left",
+        bbox_to_anchor=(1.02, 0.6),
+    )
+
+    ax.add_artist(l1)
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
+
+    return fig

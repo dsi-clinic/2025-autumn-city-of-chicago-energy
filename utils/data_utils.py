@@ -3,6 +3,8 @@
 import json
 import logging
 import re
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -99,63 +101,63 @@ def concurrent_buildings(
     id_col: str = "ID",
     year_col: str = "Data Year",
     building_type_col: str = "Primary Property Type",
-    building_type: list = None,
+    building_type: list | None = None,
+    status_col: str = "Reporting Status",
+    submitted_label: str = "submitted",
+    status_year: int = 2018,
 ) -> pd.DataFrame:
-    """Filter buildings that have submitted data for all years in a specified range, keeping only records within that range.
+    """Filter buildings that have submitted data for all years in a specified range.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The energy dataset containing at least building ID and year columns.
-    start_year : int, default = 2016
-        The first year in the required range (inclusive).
-    end_year : int, default = 2023
-        The last year in the required range (inclusive).
-    id_col : str, default="ID"
-        The column name that identifies unique buildings.
-    year_col : str, default="Data Year"
-        The column name indicating the year of the data entry.
-    building_type_col : str, default="Primary Property Type"
-        The column name for the building type.
-    building_type : list, default=[]
-        A list of building types to include. If empty, all types are included.
-
-    Returns:
-    -------
-    pd.DataFrame
-        A filtered DataFrame containing only records of buildings that have
-        data submitted for all years in the specified range, restricted to data within that range.
+    Only records within [start_year, end_year] are kept. For years >= 2018,
+    only rows whose reporting status matches one of the `submitted_labels`
+    are considered.
     """
     if input_df is None:
         input_df = load_data()
 
-    required_years = set(range(start_year, end_year + 1))
-
-    # Restrict to years within the desired range first
     df_in_range = input_df[
         (input_df[year_col] >= start_year) & (input_df[year_col] <= end_year)
-    ]
+    ].copy()
 
-    # Optionally filter by building type if list is provided
+    # Optional filter by building type
     if building_type:
         df_in_range = df_in_range[df_in_range[building_type_col].isin(building_type)]
 
-    # Group by building ID and collect unique years
+    if status_col in df_in_range.columns:
+        df_in_range[status_col] = df_in_range[status_col].str.strip().str.lower()
+        df_in_range[status_col] = df_in_range[status_col].replace(
+            "submitted data", "submitted"
+        )
+
+    # For years >= 2018, require Reporting Status in submitted_labels
+    if status_col in df_in_range.columns:
+        mask_pre_2018 = df_in_range[year_col] < status_year
+        mask_2018_plus = df_in_range[year_col] >= status_year
+
+        # keep all pre-2018 rows; filter 2018+ to submitted
+        mask_submitted = df_in_range[status_col] == submitted_label
+        df_in_range = df_in_range[mask_pre_2018 | (mask_2018_plus & mask_submitted)]
+
+    required_years = set(range(start_year, end_year + 1))
+
+    required_years = set(range(start_year, end_year + 1))
+
+    # Unique years per building
     building_years = (
         df_in_range.groupby(id_col)[year_col].unique().reset_index(name="Years")
     )
 
-    # Keep only those with full year coverage
+    # Buildings that have submitted in every required year
     buildings_all_years = building_years[
         building_years["Years"].apply(lambda years: required_years.issubset(set(years)))
     ]
 
-    # Filter the dataset to only those buildings and within year range
+    # Keep only those buildings, within year range
     filtered_df = df_in_range[
         df_in_range[id_col].isin(buildings_all_years[id_col])
     ].copy()
 
-    # Ensure no duplicates (e.g., multiple entries for same building-year)
+    # Ensure one row per building-year
     filtered_df = filtered_df.drop_duplicates(subset=[id_col, year_col], keep="first")
 
     return filtered_df
@@ -655,3 +657,325 @@ def load_national_eui_data() -> dict:
         "National_Median_Source_EUI": [142.1, 138.7, 124.1, 121.8, 118.1, 114.1],
     }
     return pd.DataFrame(national_data)
+
+
+def load_major_us_cities() -> dict:
+    """Load all CSV files from major_us_cities_data folder.
+
+    Returns a dict: {<file_stem>: DataFrame}
+    """
+    path = DATA_DIR / "major_us_cities_data"
+
+    # Backup path for notebooks in /project environments
+    if not path.exists():
+        path = Path("/project") / "data" / "major_us_cities_data"
+
+    if not path.exists():
+        raise FileNotFoundError(f"Data directory not found: {path}")
+
+    csv_files = list(path.glob("*.csv"))
+    if not csv_files:
+        raise FileNotFoundError(f"No CSV files found in {path}")
+
+    city_data = {}
+    for file in csv_files:
+        df_city = pd.read_csv(file)
+        key = file.stem  # filename without extension
+        city_data[key] = df_city
+        logger.info(f"Loaded {file.name} → {df_city.shape}")
+
+    return city_data
+
+
+# -----------------------------------------------------------------------------------
+# ---------------------------- Merge Major City Data --------------------------------
+# -----------------------------------------------------------------------------------
+
+CHICAGO_CANONICAL_COLS = {
+    "Data Year",
+    "ID",
+    "Property Name",
+    "Address",
+    "ZIP Code",
+    "Primary Property Type",
+    "Gross Floor Area - Buildings (sq ft)",
+    "Site EUI (kBtu/sq ft)",
+    "Source EUI (kBtu/sq ft)",
+    "ENERGY STAR Score",
+}
+
+
+@dataclass(frozen=True)
+class CitySchema:
+    """Defines how to map a city's raw columns into Chicago's canonical schema."""
+
+    city: str
+    column_map: dict[str, str]
+    required_cols: Iterable[str] = ("Data Year", "Address", "Primary Property Type")
+
+
+def _standardize_strings(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
+    out = df.copy()
+    for c in cols:
+        if c in out.columns:
+            out[c] = (
+                out[c]
+                .astype(str)
+                .str.strip()
+                .replace({"": np.nan, "nan": np.nan, "none": np.nan})
+            )
+    return out
+
+
+def _apply_chicago_style_cleaning(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply a light version of Chicago-style cleaning for city data.
+
+    IMPORTANT: avoid lowercasing Address if you merge on Address later.
+    """
+    out = df.copy()
+
+    numeric_cols = [
+        "Gross Floor Area - Buildings (sq ft)",
+        "Site EUI (kBtu/sq ft)",
+        "Source EUI (kBtu/sq ft)",
+        "ENERGY STAR Score",
+    ]
+    out = out.assign(
+        **{col: clean_numeric(out[col]) for col in numeric_cols if col in out.columns}
+    )
+
+    str_cols = ["Property Name", "Primary Property Type", "ZIP Code"]
+    out = _standardize_strings(out, str_cols)
+
+    return out
+
+
+# --- Chicago schema (exact) ---
+CHICAGO_COLS = [
+    "Data Year",
+    "ID",
+    "Property Name",
+    "Address",
+    "ZIP Code",
+    "Community Area",
+    "Primary Property Type",
+    "Gross Floor Area - Buildings (sq ft)",
+    "Year Built",
+    "# of Buildings",
+    "ENERGY STAR Score",
+    "Electricity Use (kBtu)",
+    "Natural Gas Use (kBtu)",
+    "District Steam Use (kBtu)",
+    "District Chilled Water Use (kBtu)",
+    "All Other Fuel Use (kBtu)",
+    "Site EUI (kBtu/sq ft)",
+    "Source EUI (kBtu/sq ft)",
+    "Weather Normalized Site EUI (kBtu/sq ft)",
+    "Weather Normalized Source EUI (kBtu/sq ft)",
+    "Total GHG Emissions (Metric Tons CO2e)",
+    "GHG Intensity (kg CO2e/sq ft)",
+    "Latitude",
+    "Longitude",
+    "Location",
+    "Reporting Status",
+    "Chicago Energy Rating",
+    "Exempt From Chicago Energy Rating",
+    "Water Use (kGal)",
+    "Row_ID",
+]
+
+KWH_TO_KBTU = 3.412141633
+
+
+def _to_num(s: pd.Series | None) -> pd.Series:
+    """Coerce a Series-like object to numeric; returns float with NaNs for bad values."""
+    if s is None:
+        return pd.Series(dtype="float64")
+    return pd.to_numeric(s, errors="coerce")
+
+
+def _make_location(
+    df_city: pd.DataFrame,
+    lat_col: str = "Latitude",
+    lon_col: str = "Longitude",
+) -> pd.Series:
+    """Create Chicago-style Location string: 'POINT (lon lat)' where lat/lon present."""
+    lat = _to_num(df_city.get(lat_col))
+    lon = _to_num(df_city.get(lon_col))
+
+    loc = pd.Series(pd.NA, index=df_city.index, dtype="object")
+    ok = lat.notna() & lon.notna()
+    loc.loc[ok] = (
+        "POINT (" + lon.loc[ok].astype(str) + " " + lat.loc[ok].astype(str) + ")"
+    )
+    return loc
+
+
+def sf_to_chicago(sf_df: pd.DataFrame) -> pd.DataFrame:
+    """Map San Francisco benchmarking data into Chicago's schema.
+
+    Assumes SF columns (common from SF Open Data export) like:
+    - Benchmark Year, unique_identifier, Building Name, Building Address, Postal Code
+    - Category, Floor Area, Year Built, ENERGY STAR Score
+    - Electricity Use - Grid Purchase (kWh), Natural Gas Use (kBtu), District Steam Use (kBtu)
+    - Site EUI (kBtu/ft2), Source EUI (kBtu/ft2), Weather Normalized ... (kBtu/ft2)
+    - Total GHG Emissions ..., Total GHG Emissions Intensity ...
+    - latitude, longitude, Benchmark Status, Reason for Exemption
+    """
+    out = pd.DataFrame(index=sf_df.index)
+
+    out["Data Year"] = _to_num(sf_df.get("Benchmark Year"))
+    out["ID"] = sf_df.get("unique_identifier")
+
+    out["Property Name"] = sf_df.get("Building Name")
+    out["Address"] = sf_df.get("Building Address")
+    out["ZIP Code"] = sf_df.get("Postal Code")
+
+    out["Community Area"] = pd.NA
+    out["Primary Property Type"] = sf_df.get("Category")
+
+    out["Gross Floor Area - Buildings (sq ft)"] = clean_numeric(sf_df.get("Floor Area"))
+    out["Year Built"] = _to_num(sf_df.get("Year Built"))
+    out["# of Buildings"] = pd.NA
+
+    out["ENERGY STAR Score"] = _to_num(sf_df.get("ENERGY STAR Score"))
+
+    # Electricity: kWh -> kBtu
+    elec_kwh = _to_num(sf_df.get("Electricity Use - Grid Purchase (kWh)"))
+    out["Electricity Use (kBtu)"] = elec_kwh * KWH_TO_KBTU
+
+    out["Natural Gas Use (kBtu)"] = _to_num(sf_df.get("Natural Gas Use (kBtu)"))
+    out["District Steam Use (kBtu)"] = _to_num(sf_df.get("District Steam Use (kBtu)"))
+
+    out["District Chilled Water Use (kBtu)"] = pd.NA
+    out["All Other Fuel Use (kBtu)"] = pd.NA
+
+    # EUI: ft2 == sq ft
+    out["Site EUI (kBtu/sq ft)"] = _to_num(sf_df.get("Site EUI (kBtu/ft2)"))
+    out["Source EUI (kBtu/sq ft)"] = _to_num(sf_df.get("Source EUI (kBtu/ft2)"))
+    out["Weather Normalized Site EUI (kBtu/sq ft)"] = _to_num(
+        sf_df.get("Weather Normalized Site EUI (kBtu/ft2)")
+    )
+    out["Weather Normalized Source EUI (kBtu/sq ft)"] = _to_num(
+        sf_df.get("Weather Normalized Source EUI (kBtu/ft2)")
+    )
+
+    out["Total GHG Emissions (Metric Tons CO2e)"] = _to_num(
+        sf_df.get("Total GHG Emissions (Metric Tons CO2e)")
+    )
+    out["GHG Intensity (kg CO2e/sq ft)"] = _to_num(
+        sf_df.get("Total GHG Emissions Intensity (kGCO2e/ft2)")
+    )
+
+    # SF lat/lon are often lowercase
+    out["Latitude"] = _to_num(sf_df.get("latitude"))
+    out["Longitude"] = _to_num(sf_df.get("longitude"))
+    out["Location"] = _make_location(out, "Latitude", "Longitude")
+
+    out["Reporting Status"] = sf_df.get("Benchmark Status")
+    out["Chicago Energy Rating"] = pd.NA
+    out["Exempt From Chicago Energy Rating"] = sf_df.get("Reason for Exemption")
+
+    out["Water Use (kGal)"] = pd.NA
+    out["Row_ID"] = pd.NA
+
+    for c in CHICAGO_COLS:
+        if c not in out.columns:
+            out[c] = pd.NA
+
+    return out[CHICAGO_COLS].copy()
+
+
+def seattle_to_chicago(seattle_df: pd.DataFrame) -> pd.DataFrame:
+    """Map Seattle benchmarking data (current column-name variant) into Chicago's schema.
+
+    Seattle raw columns look like: OSEBuildingID, DataYear, BuildingName, ZipCode, ...
+    """
+    out = pd.DataFrame(index=seattle_df.index)
+
+    out["Data Year"] = _to_num(seattle_df.get("DataYear"))
+    out["ID"] = seattle_df.get("OSEBuildingID")
+
+    out["Property Name"] = seattle_df.get("BuildingName")
+    out["Address"] = seattle_df.get("Address")
+    out["ZIP Code"] = seattle_df.get("ZipCode")
+
+    out["Community Area"] = pd.NA
+    out["Primary Property Type"] = seattle_df.get("EPAPropertyType")
+
+    # Prefer Buildings GFA; fallback to Total; fallback to self-report
+    if "PropertyGFABuildings" in seattle_df.columns:
+        out["Gross Floor Area - Buildings (sq ft)"] = clean_numeric(
+            seattle_df.get("PropertyGFABuildings")
+        )
+    elif "PropertyGFATotal" in seattle_df.columns:
+        out["Gross Floor Area - Buildings (sq ft)"] = _to_num(
+            seattle_df.get("PropertyGFATotal")
+        )
+    else:
+        out["Gross Floor Area - Buildings (sq ft)"] = _to_num(
+            seattle_df.get("SelfReportGFABuildings")
+        )
+
+    out["Year Built"] = _to_num(seattle_df.get("YearBuilt"))
+    out["# of Buildings"] = _to_num(seattle_df.get("NumberofBuildings"))
+
+    out["ENERGY STAR Score"] = _to_num(seattle_df.get("ENERGYSTARScore"))
+
+    # Electricity: prefer kBtu; else convert kWh -> kBtu
+    if "Electricity(kBtu)" in seattle_df.columns:
+        out["Electricity Use (kBtu)"] = _to_num(seattle_df.get("Electricity(kBtu)"))
+    else:
+        out["Electricity Use (kBtu)"] = (
+            _to_num(seattle_df.get("Electricity(kWh)")) * KWH_TO_KBTU
+        )
+
+    # Natural gas: prefer kBtu; else therms -> kBtu (1 therm = 100 kBtu)
+    if "NaturalGas(kBtu)" in seattle_df.columns:
+        out["Natural Gas Use (kBtu)"] = _to_num(seattle_df.get("NaturalGas(kBtu)"))
+    else:
+        out["Natural Gas Use (kBtu)"] = (
+            _to_num(seattle_df.get("NaturalGas(therms)")) * 100.0
+        )
+
+    out["District Steam Use (kBtu)"] = _to_num(seattle_df.get("SteamUse(kBtu)"))
+
+    out["District Chilled Water Use (kBtu)"] = pd.NA
+    out["All Other Fuel Use (kBtu)"] = pd.NA
+
+    # EUI units already match Chicago (kBtu/sf == kBtu/sq ft)
+    out["Site EUI (kBtu/sq ft)"] = _to_num(seattle_df.get("SiteEUI(kBTu/sf)"))
+    if out["Site EUI (kBtu/sq ft)"].isna().all():
+        out["Site EUI (kBtu/sq ft)"] = _to_num(seattle_df.get("SiteEUI(kBtu/sf)"))
+
+    out["Source EUI (kBtu/sq ft)"] = _to_num(seattle_df.get("SourceEUI(kBtu/sf)"))
+    out["Weather Normalized Site EUI (kBtu/sq ft)"] = _to_num(
+        seattle_df.get("SiteEUIWN(kBtu/sf)")
+    )
+    out["Weather Normalized Source EUI (kBtu/sq ft)"] = _to_num(
+        seattle_df.get("SourceEUIWN(kBtu/sf)")
+    )
+
+    out["Total GHG Emissions (Metric Tons CO2e)"] = _to_num(
+        seattle_df.get("TotalGHGEmissions")
+    )
+    out["GHG Intensity (kg CO2e/sq ft)"] = _to_num(
+        seattle_df.get("GHGEmissionsIntensity")
+    )
+
+    out["Latitude"] = _to_num(seattle_df.get("Latitude"))
+    out["Longitude"] = _to_num(seattle_df.get("Longitude"))
+    out["Location"] = _make_location(out, "Latitude", "Longitude")
+
+    out["Reporting Status"] = seattle_df.get("ComplianceStatus")
+    out["Chicago Energy Rating"] = pd.NA
+    out["Exempt From Chicago Energy Rating"] = seattle_df.get("ComplianceIssue")
+
+    out["Water Use (kGal)"] = pd.NA
+    out["Row_ID"] = pd.NA
+
+    for c in CHICAGO_COLS:
+        if c not in out.columns:
+            out[c] = pd.NA
+
+    return out[CHICAGO_COLS].copy()

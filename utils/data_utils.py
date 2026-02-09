@@ -240,6 +240,43 @@ def load_neighborhood_geojson() -> dict:
     return geojson
 
 
+def load_community_geojson() -> dict:
+    """Loads the community area GeoJSON file.
+
+    Returns:
+        A Python dictionary parsed from the GeoJSON file,
+        with an added human-readable community_display field.
+    """
+    path = DATA_DIR / "chicago_geo"
+
+    if not path.exists():
+        path = Path("/project") / "data" / "chicago_geo"
+
+    if not path.exists():
+        raise FileNotFoundError(f"Data directory not found: {path}")
+
+    geojson_path = path / "Community_area_chi.geojson"
+
+    logger.info(f"Loading GeoJSON from: {geojson_path.resolve()}")
+    with geojson_path.open() as f:
+        geojson = json.load(f)
+
+    # ---- Add display-friendly community name ----
+    for feat in geojson.get("features", []):
+        props = feat.get("properties", {})
+        raw = props.get("community")
+
+        if raw is not None and "community_display" not in props:
+            props["community_display"] = " ".join(
+                w.capitalize() for w in str(raw).lower().split()
+            )
+
+        feat["properties"] = props
+
+    logger.info(f"Loaded {len(geojson['features'])} features")
+    return geojson
+
+
 def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
     """Ensure each building (ID) has a consistent Primary Property Type.
 

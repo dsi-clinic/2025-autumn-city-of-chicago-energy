@@ -1763,13 +1763,17 @@ def choropleth_with_composition_tooltip(
         lambda s: s / s.sum()
     )
 
-    shares_wide = comp_counts2.pivot_table(
-        index="_area",
-        columns="_ptype2",
-        values="share",
-        aggfunc="sum",
-        fill_value=0,
-    ).reset_index()
+    shares_wide = (
+        comp_counts2.pivot_table(
+            index="_area",
+            columns="_ptype2",
+            values="share",
+            aggfunc="sum",
+            fill_value=0,
+        )
+        .reset_index()
+        .rename(columns={"_area": "Community Area"})
+    )
 
     area = area_totals.merge(shares_wide, on="Community Area", how="left").fillna(0)
 

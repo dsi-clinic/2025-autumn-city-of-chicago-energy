@@ -9,7 +9,12 @@ import streamlit as st
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from utils.data_utils import concurrent_buildings, load_data, load_neighborhood_geojson
+from utils.data_utils import (
+    concurrent_buildings,
+    load_community_geojson,
+    load_data,
+    load_neighborhood_geojson,
+)
 from utils.plot_utils import (
     aggregate_metric,
     plot_bar,
@@ -82,6 +87,18 @@ def cache_geojson(tolerance: float = 0.00259) -> dict:
     )
 
     # Convert back to dict if needed downstream
+    return json.loads(gdf.to_json())
+
+
+def cache_community_geojson(tolerance: float = 0.00259) -> dict:
+    """Cache community area geojson of Chicago."""
+    geojson_data = load_community_geojson()
+    gdf = gpd.GeoDataFrame.from_features(geojson_data["features"])
+
+    gdf["geometry"] = gdf["geometry"].simplify(
+        tolerance=tolerance, preserve_topology=True
+    )
+
     return json.loads(gdf.to_json())
 
 

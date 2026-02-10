@@ -940,3 +940,100 @@ def compliance_by_category(
     summary["non_compliance_rate"] = summary["non_compliant"] / summary["total"]
 
     return summary.sort_values("total", ascending=False)
+
+
+def merge_covered_with_benchmarking(
+    covered_df: pd.DataFrame,
+    benchmark_df: pd.DataFrame,
+    data_year_col: str = "Data Year",
+    status_col: str = "Reporting Status",
+    missing_label: str = "Not present in data",
+    id_col: str = "ID"
+) -> pd.DataFrame:
+    """
+    Adds ALL covered buildings absent EACH YEAR (no dedup within year).
+    """
+    import pandas as pd
+    import numpy as np
+    
+    # Standardize IDs
+    covered_df = covered_df.rename(columns={'Building ID': id_col}).copy()
+    benchmark_df = benchmark_df.rename(columns={'ID': id_col}).copy()
+    
+    bench_cols = benchmark_df.columns.tolist()
+    map_cols = {
+        "Address": "Address", "Zip": "ZIP Code", 
+        "Community Area Name": "Community Area",
+        "Latitude": "Latitude", "Longitude": "Longitude", "Location": "Location"
+    }
+    
+    years = sorted(benchmark_df[data_year_col].drop_duplicates())
+    result = benchmark_df.copy()
+    total_added = 0
+    
+    for year in years:
+        # Benchmarking IDs this year ONLY
+        year_mask = (result[data_year_col] == year) & result[id_col].notna()
+        year_ids = set(result.loc[year_mask, id_col].unique())
+        
+        # ALL covered buildings absent this year (NO drop_duplicates)
+        absent_covered = covered_df[~covered_df[id_col].isin(year_ids)].copy()
+        
+        num_new = len(absent_covered)
+        if num_new == 0:
+            continue
+            
+        # Create rows matching covered shape exactly
+        new_rows = pd.DataFrame(np.nan, index=absent_covered.index, columns=bench_cols)
+        new_rows[data_year_col] = year
+        new_rows[status_col] = missing_label
+        new_rows[id_col] = absent_covered[id_col]
+        
+        # Map ALL available columns
+        for cov_col, bench_col in map_cols.items():
+            if cov_col in covered_df.columns:
+                new_rows[bench_col] = absent_covered[cov_col]
+        
+        result = pd.concat([result, new_rows], ignore_index=True)
+        total_added += num_new
+        print(f"Year {year}: added {num_new} rows")
+    
+    print(f"✅ Total added: {total_added} rows across all years")
+    return result
+
+def add_reporting_compliance_flags(
+    df: pd.DataFrame,
+    year_col: str = "Data Year",
+    status_col: str = "Reporting Status",
+) -> pd.DataFrame:
+    """Standardize reporting status and add compliance flags for 2018+."""
+    df = df.copy()
+
+    # Only keep 2018+ for these analyses
+    df = df[df[year_col] >= 2018].copy()
+
+    # Clean and normalize status
+    df[status_col] = (
+        df[status_col]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .replace("submitted data", "submitted")
+    )
+
+    # Basic flags
+    df["SubmittedFlag"] = df[status_col].eq("submitted")
+    df["ExemptFlag"] = df[status_col].eq("exempt")
+    df["NotSubmittedFlag"] = df[status_col].eq("not submitted")
+
+    # Overall non‑compliance flag: not submitted and not exempt
+    df["NonCompliantFlag"] = df["NotSubmittedFlag"] & ~df["ExemptFlag"]
+
+    return df
+
+
+
+
+
+

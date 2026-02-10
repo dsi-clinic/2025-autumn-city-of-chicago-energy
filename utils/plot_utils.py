@@ -1842,3 +1842,101 @@ def plotting_FE_star_coef(formula_list: list) -> plt.Figure:
     plt.tight_layout(rect=[0, 0, 0.85, 1])
 
     return fig
+
+def plot_compliance_rate_over_time(
+    df: pd.DataFrame,
+    year_col: str,
+    group_col: str,
+    value_col: str,
+    y_title: str,
+):
+    """
+    Line chart of compliance metric over time, optionally grouped by category.
+    Expects one row per (year, group).
+    """
+    if df.empty:
+        return alt.Chart(pd.DataFrame({year_col: [], value_col: []})).mark_line()
+
+    base = alt.Chart(df).encode(
+        x=alt.X(f"{year_col}:O", title="Data Year"),
+        y=alt.Y(f"{value_col}:Q", title=y_title),
+        tooltip=[
+            alt.Tooltip(f"{year_col}:O", title="Year"),
+            alt.Tooltip(f"{group_col}:N", title=group_col),
+            alt.Tooltip(f"{value_col}:Q", title=y_title, format=".2f"),
+        ],
+    )
+
+    # If only one group, no color legend
+    if df[group_col].nunique() <= 1:
+        chart = base.mark_line(point=True, strokeWidth=2, color="#1f77b4")
+    else:
+        chart = base.encode(
+            color=alt.Color(f"{group_col}:N", title=group_col),
+        ).mark_line(point=True, strokeWidth=2)
+
+    return chart.properties(height=400)
+
+def plot_compliance_status_facets(
+    df: pd.DataFrame,
+    year_col: str,
+    group_col: str,
+    n_submitted_col: str,
+    n_exempt_col: str,
+    n_not_submitted_col: str,
+):
+    """
+    Faceted stacked bar chart of counts by reporting status.
+
+    Expects df with one row per (year, group) and count columns:
+      - n_submitted_col
+      - n_exempt_col
+      - n_not_submitted_col
+    """
+    if df.empty:
+        return alt.Chart(pd.DataFrame({group_col: [], year_col: []})).mark_bar()
+
+    df_long = df.rename(
+        columns={
+            n_submitted_col: "Submitted",
+            n_exempt_col: "Exempt",
+            n_not_submitted_col: "Not submitted",
+        }
+    ).melt(
+        id_vars=[year_col, group_col],
+        value_vars=["Submitted", "Exempt", "Not submitted"],
+        var_name="Status",
+        value_name="Count",
+    )
+
+    base = alt.Chart(df_long).encode(
+        x=alt.X(f"{group_col}:N", title=group_col),
+        y=alt.Y("Count:Q", title="Number of buildings"),
+        color=alt.Color(
+            "Status:N",
+            title="Reporting Status",
+            scale=alt.Scale(
+                domain=["Submitted", "Exempt", "Not submitted"],
+                range=["#1f77b4", "#2ca02c", "#d62728"],
+            ),
+        ),
+        tooltip=[
+            alt.Tooltip(f"{year_col}:O", title="Year"),
+            alt.Tooltip(f"{group_col}:N", title=group_col),
+            alt.Tooltip("Status:N", title="Status"),
+            alt.Tooltip("Count:Q", title="Buildings"),
+        ],
+    )
+
+    chart = (
+        base.mark_bar()
+        .properties(height=250)
+        .facet(
+            column=alt.Column(
+                f"{year_col}:O",
+                title="Data Year",
+            )
+        )
+    )
+
+    return chart

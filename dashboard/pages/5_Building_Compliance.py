@@ -1,23 +1,19 @@
 """Building Compliance Over Time Visualization"""
 
 import streamlit as st
-import pandas as pd
 
 from utils.data_utils import (
+    add_reporting_compliance_flags,
     assign_effective_year_built,
     categorize_time_built,
     clean_property_type,
-    concurrent_buildings,
+    clean_year_built,
     load_data,
-    add_reporting_compliance_flags,
-    clean_year_built
 )
-
 from utils.plot_utils import (
     plot_compliance_rate_over_time,
     plot_compliance_status_facets,
 )
-
 
 st.title("Compliance with Chicago Energy Benchmarking Over Time")
 st.markdown("""
@@ -37,11 +33,12 @@ energy_df = assign_effective_year_built(energy_df)
 energy_df = clean_property_type(energy_df)
 energy_df = categorize_time_built(energy_df)
 
+restriction_year = 2018
 # Apply standardized compliance logic (2018+)
 energy_df = add_reporting_compliance_flags(energy_df)
 
 # Restrict to 2018+ (already done inside helper, but safe to be explicit)
-energy_df = energy_df[energy_df["Data Year"] >= 2018]
+energy_df = energy_df[energy_df["Data Year"] >= restriction_year]
 
 
 # Optional: restrict to years where ordinance is active and data is consistent
@@ -112,7 +109,9 @@ if energy_df_filtered.empty:
     st.stop()
 
 
-if energy_df_filtered["Data Year"].nunique() < 2:
+min_years = 2
+
+if energy_df_filtered["Data Year"].nunique() < min_years:
     st.warning(
         "Not enough years of data for the selected filters to evaluate compliance trends."
     )
@@ -124,8 +123,7 @@ if energy_df_filtered["Data Year"].nunique() < 2:
 group_cols = ["Data Year", category_col]
 
 agg = (
-    energy_df
-    .groupby(group_cols, dropna=False)
+    energy_df.groupby(group_cols, dropna=False)
     .agg(
         n_buildings=("ID", "nunique"),
         n_submitted=("SubmittedFlag", "sum"),
@@ -136,9 +134,12 @@ agg = (
     .reset_index()
 )
 
-agg["share_submitted"] = agg["n_submitted"] / agg["n_buildings"].where(agg["n_buildings"] > 0)
-agg["share_non_compliant"] = agg["n_non_compliant"] / agg["n_buildings"].where(agg["n_buildings"] > 0)
-
+agg["share_submitted"] = agg["n_submitted"] / agg["n_buildings"].where(
+    agg["n_buildings"] > 0
+)
+agg["share_non_compliant"] = agg["n_non_compliant"] / agg["n_buildings"].where(
+    agg["n_buildings"] > 0
+)
 
 
 # --- Choose metric to plot ---
@@ -165,7 +166,6 @@ elif metric_option == "Number submitted":
 else:
     value_col = "n_non_compliant"
     y_title = "Non‑compliant buildings"
-
 
 
 class_opts = sorted(agg[category_col].dropna().unique().tolist())

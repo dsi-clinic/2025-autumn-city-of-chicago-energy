@@ -1843,15 +1843,16 @@ def plotting_FE_star_coef(formula_list: list) -> plt.Figure:
 
     return fig
 
+
 def plot_compliance_rate_over_time(
     df: pd.DataFrame,
     year_col: str,
     group_col: str,
     value_col: str,
     y_title: str,
-):
-    """
-    Line chart of compliance metric over time, optionally grouped by category.
+) -> alt.Chart:
+    """Line chart of compliance metric over time, optionally grouped by category.
+
     Expects one row per (year, group).
     """
     if df.empty:
@@ -1868,7 +1869,8 @@ def plot_compliance_rate_over_time(
     )
 
     # If only one group, no color legend
-    if df[group_col].nunique() <= 1:
+    unique_groups = set(df[group_col].dropna().head(2))
+    if len(unique_groups) <= 1:
         chart = base.mark_line(point=True, strokeWidth=2, color="#1f77b4")
     else:
         chart = base.encode(
@@ -1877,6 +1879,7 @@ def plot_compliance_rate_over_time(
 
     return chart.properties(height=400)
 
+
 def plot_compliance_status_facets(
     df: pd.DataFrame,
     year_col: str,
@@ -1884,9 +1887,8 @@ def plot_compliance_status_facets(
     n_submitted_col: str,
     n_exempt_col: str,
     n_not_submitted_col: str,
-):
-    """
-    Faceted stacked bar chart of counts by reporting status.
+) -> alt.Chart:
+    """Faceted stacked bar chart of counts by reporting status.
 
     Expects df with one row per (year, group) and count columns:
       - n_submitted_col

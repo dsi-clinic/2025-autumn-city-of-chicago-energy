@@ -13,7 +13,7 @@ import streamlit as st
 
 from utils.dashboard_utils import (
     apply_page_config,
-    cache_community_geojson,
+    cache_community_geojson_url,
     cache_full_data,
 )
 from utils.plot_utils import noncompliance_choropleth_by_year
@@ -40,7 +40,8 @@ def main() -> None:
 
     # -------------------- Load Data --------------------
     full_data = cache_full_data()
-    chi_geo = cache_community_geojson()
+    # chi_geo = cache_community_geojson()
+    chi_geo = cache_community_geojson_url()
 
     years_list = sorted(
         [int(year) for year in sorted(full_data["Data Year"].dropna().unique())]

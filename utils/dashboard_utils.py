@@ -1,5 +1,6 @@
 """Modularizing configurations for each page"""
 
+import base64
 import json
 
 import altair as alt
@@ -90,6 +91,21 @@ def cache_geojson(tolerance: float = 0.00259) -> dict:
     return json.loads(gdf.to_json())
 
 
+def geojson_to_data_url(geo: dict) -> str:
+    """Encode a GeoJSON FeatureCollection as a data: URL (base64)."""
+    payload = json.dumps(geo, separators=(",", ":")).encode("utf-8")
+    b64 = base64.b64encode(payload).decode("ascii")
+    return f"data:application/json;base64,{b64}"
+
+
+@st.cache_data
+def cache_community_geojson_url(tolerance: float = 0.00259) -> str:
+    """Cached data-URL version of community-area geojson for Altair/Vega."""
+    geo = cache_community_geojson(tolerance=tolerance)
+    return geojson_to_data_url(geo)
+
+
+@st.cache_data
 def cache_community_geojson(tolerance: float = 0.00259) -> dict:
     """Cache community area geojson of Chicago."""
     geojson_data = load_community_geojson()

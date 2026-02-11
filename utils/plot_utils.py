@@ -24,6 +24,16 @@ from statsmodels.regression.linear_model import RegressionResultsWrapper
 
 from utils.stats_utils import extract_model_coefficients
 
+
+def _geo_data(geo: dict) -> dict:
+    # Accept dict OR a pre-encoded data URL string
+    if isinstance(geo, str):
+        return alt.Data(
+            url=geo, format=alt.DataFormat(type="json", property="features")
+        )
+    return alt.Data(values=geo["features"])
+
+
 # ----------Comparable analysis (Bar charts and delta charts)-----------
 
 
@@ -1308,7 +1318,8 @@ def create_choropleth_layer(
 
     # Base map (grey background)
     base = (
-        alt.Chart(alt.Data(values=geojson["features"]))
+        # alt.Chart(alt.Data(values=geojson["features"]))
+        alt.Chart(_geo_data(geojson))
         .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
         .project(type="mercator")
         .properties(width=600, height=400)
@@ -1316,7 +1327,8 @@ def create_choropleth_layer(
 
     # Data overlay
     overlay = (
-        alt.Chart(alt.Data(values=geojson["features"]))
+        # alt.Chart(alt.Data(values=geojson["features"]))
+        alt.Chart(_geo_data(geojson))
         .mark_geoshape(stroke="white", strokeWidth=0.5)
         .transform_lookup(
             lookup=feature_id,
@@ -1473,14 +1485,16 @@ def plot_metric_change_map(
         title = f"Change in {metric} (Latest - Earliest Year, Multi-Year Buildings)"
 
         base = (
-            alt.Chart(alt.Data(values=geojson["features"]))
+            # alt.Chart(alt.Data(values=geojson["features"]))
+            alt.Chart(_geo_data(geojson))
             .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
             .project(type="mercator")
             .properties(width=600, height=400)
         )
 
         overlay = (
-            alt.Chart(alt.Data(values=geojson["features"]))
+            # alt.Chart(alt.Data(values=geojson["features"]))
+            alt.Chart(_geo_data(geojson))
             .mark_geoshape(stroke="white", strokeWidth=0.5)
             .transform_lookup(
                 lookup="properties.pri_neigh",
@@ -1619,7 +1633,8 @@ def noncompliance_choropleth_by_year(
     )
 
     chart = (
-        alt.Chart(alt.Data(values=chi_geo["features"]))
+        # alt.Chart(alt.Data(values=chi_geo["features"]))
+        alt.Chart(_geo_data(chi_geo))
         .mark_geoshape(stroke="white", strokeWidth=0.5)
         .project(type="mercator")
         .add_params(ptype_sel)
@@ -1790,7 +1805,8 @@ def choropleth_with_composition_tooltip(
     )
 
     chart = (
-        alt.Chart(alt.Data(values=chi_geo["features"]))
+        # alt.Chart(alt.Data(values=chi_geo["features"]))
+        alt.Chart(_geo_data(chi_geo))
         .mark_geoshape(stroke="white", strokeWidth=0.5)
         .project(type="mercator")
         .transform_lookup(

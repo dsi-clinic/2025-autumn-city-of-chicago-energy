@@ -9,13 +9,23 @@ Goal:
 import altair as alt
 import streamlit as st
 
-from utils.dashboard_utils import apply_page_config, cache_community_geojson
+from utils.dashboard_utils import (
+    apply_page_config,
+    cache_community_geojson,
+    cache_community_geojson_url,
+)
 
 
 def main() -> None:
     """Render a minimal Streamlit page to test GeoJSON map rendering."""
     apply_page_config()
     st.title("GeoJSON Minimal Render Test")
+
+    # Load geojson using data URL
+    geo_url = cache_community_geojson_url()
+    data = alt.Data(
+        url=geo_url, format=alt.DataFormat(type="json", property="features")
+    )
 
     # Load geojson
     geo = cache_community_geojson()
@@ -35,7 +45,7 @@ def main() -> None:
 
     # PURE geoshape — no encode, no transform, no color
     chart = (
-        alt.Chart(alt.Data(values=geo["features"]))
+        alt.Chart(data)  # use data here instead of inline unwrap
         .mark_geoshape(
             filled=False,
             stroke="#444",

@@ -22,16 +22,7 @@ import pandas as pd
 import seaborn as sns
 from statsmodels.regression.linear_model import RegressionResultsWrapper
 
-from utils.fix_effect_utils import extract_model_coefficients
-
-
-def _geo_data(geo: dict) -> dict:
-    # Accept dict OR a pre-encoded data URL string
-    if isinstance(geo, str):
-        return alt.Data(
-            url=geo, format=alt.DataFormat(type="json", property="features")
-        )
-    return alt.Data(values=geo["features"])
+from utils.stats_utils import extract_model_coefficients
 
 
 def _geo_data(geo: dict) -> dict:

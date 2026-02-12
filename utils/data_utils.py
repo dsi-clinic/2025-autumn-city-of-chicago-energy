@@ -1167,33 +1167,41 @@ def build_area_table_by_property(
 
 def compliance_by_category(
     energy_data: pd.DataFrame,
-    energy_reported: pd.DataFrame,
     year: int,
     category_col: str,
     year_col: str = "Data Year",
     id_col: str = "ID",
+    status_col: str = "compliance_status",
 ) -> pd.DataFrame:
-    """Compute compliance and non-compliance rates by a categorical variable
+    """Compute compliance and non-compliance rates by a categorical variable (e.g., property type, sector) for a given year.
 
-    (e.g., property type or sector) for a given year.
+    Excludes 'exempt' from denominator.
     """
-    all_year = energy_data[energy_data[year_col] == year].copy()
-    reported_year = energy_reported[energy_reported[year_col] == year].copy()
-    compliant_ids = set(reported_year[id_col])
+    if status_col not in energy_data.columns:
+        raise KeyError(f"'{status_col}' not found. Run add_compliance_status() first.")
 
-    all_year["compliance_status"] = all_year[id_col].apply(
-        lambda x: "compliant" if x in compliant_ids else "non_compliant"
-    )
+    data = energy_data[energy_data[year_col] == year].copy()
+    data[status_col] = data[status_col].astype(str).str.strip().str.lower()
+    data = data[data[status_col].isin(["compliant", "non-compliant"])].copy()
 
-    summary = all_year.pivot_table(
+    summary = data.pivot_table(
         index=category_col,
-        columns="compliance_status",
+        columns=status_col,
         values=id_col,
         aggfunc="count",
         fill_value=0,
     ).reset_index()
 
+    if "compliant" not in summary.columns:
+        summary["compliant"] = 0
+    if "non-compliant" not in summary.columns:
+        summary["non-compliant"] = 0
+
+    summary = summary.rename(columns={"non-compliant": "non_compliant"})
+
     summary["total"] = summary["compliant"] + summary["non_compliant"]
-    summary["non_compliance_rate"] = summary["non_compliant"] / summary["total"]
+    summary["non_compliance_rate"] = summary["non_compliant"] / summary[
+        "total"
+    ].replace(0, pd.NA)
 
     return summary.sort_values("total", ascending=False)

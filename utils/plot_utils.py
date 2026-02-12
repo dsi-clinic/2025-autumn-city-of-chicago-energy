@@ -1692,7 +1692,7 @@ def plot_noncompliance_by_property(
         )
         .encode(
             color=alt.condition(
-                alt.datum.denom.isValid(),
+                alt.expr.isValid(alt.datum.denom),
                 alt.Color(
                     f"{color_field}:Q",
                     title="Non-Compliance Rate"

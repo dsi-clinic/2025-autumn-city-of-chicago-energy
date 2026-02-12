@@ -907,7 +907,9 @@ def clean_year_built(
     return cleaned_df
 
 
-# Filter reported buildings
+# --- compliance analysis ---
+
+
 def filter_buildings_reported(
     energy_data: pd.DataFrame,
     energy_cols: list[str],
@@ -943,6 +945,224 @@ def filter_buildings_reported(
 
     reported = data[status_mask & energy_mask].copy()
     return reported
+
+
+def add_compliance_status(
+    energy_data: pd.DataFrame,
+    energy_cols: list[str],
+    reporting_status_col: str = "Reporting Status",
+    exempt_col: str = "Exempt From Chicago Energy Rating",
+    allowed_statuses: list[str] | None = None,
+    require_any_energy: bool = True,
+    output_col: str = "compliance_status",
+    inplace: bool = False,
+) -> pd.DataFrame:
+    """Normalize reporting status + add compliance labels
+
+    - Label exempt-flag rows as 'exempt' first
+    - If an exempt-flag row passes reported rule -> relabel to 'compliant'
+    - For non-exempt rows:
+        - reported -> 'compliant'
+        - not reported -> 'non-compliant'
+    """
+    data = energy_data if inplace else energy_data.copy()
+
+    if reporting_status_col not in data.columns:
+        raise KeyError(f"Missing column: {reporting_status_col}")
+
+    data[reporting_status_col] = (
+        data[reporting_status_col].astype(str).str.strip().str.lower()
+    )
+    data[reporting_status_col] = data[reporting_status_col].replace(
+        {"submitted data": "submitted", "not covered 2024": "exempt"}
+    )
+
+    if allowed_statuses is None:
+        allowed_statuses = ["submitted", "nan"]
+
+    reported_df = filter_buildings_reported(
+        energy_data=data,
+        energy_cols=energy_cols,
+        reporting_status_col=reporting_status_col,
+        allowed_statuses=allowed_statuses,
+        require_any_energy=require_any_energy,
+    )
+    reported_mask = data.index.isin(reported_df.index)
+
+    if exempt_col in data.columns:
+        exempt_true = data[exempt_col].astype(str).str.strip().str.lower().eq("true")
+    else:
+        exempt_true = pd.Series(False, index=data.index)
+
+    data[output_col] = "other"  # default
+    data.loc[exempt_true, output_col] = "exempt"
+    data.loc[exempt_true & reported_mask, output_col] = "compliant"
+    data.loc[(~exempt_true) & reported_mask, output_col] = "compliant"
+    data.loc[(~exempt_true) & (~reported_mask), output_col] = "non-compliant"
+
+    return data
+
+
+def build_compliance_base_year(
+    energy_data: pd.DataFrame,
+    year: int,
+    year_col: str = "Data Year",
+    id_col: str = "ID",
+    area_col: str = "Community Area",
+    property_type_col: str = "Primary Property Type",
+    status_col: str = "compliance_status",
+) -> pd.DataFrame:
+    """One row per unique (building_id, area_key, ptype_norm) for a given year.
+
+    Uses the explicit compliance_status in energy_data.
+
+    Returns columns:
+      [id_col, area_key, area_display, ptype_norm, compliance_status]
+    """
+
+    def norm_upper(x: str | None) -> str | None:
+        return pd.NA if pd.isna(x) else str(x).strip().upper()
+
+    base = energy_data.loc[
+        energy_data[year_col] == year,
+        [id_col, area_col, property_type_col, status_col],
+    ].copy()
+
+    base["_id"] = pd.to_numeric(base[id_col], errors="coerce")
+    base["area_key"] = base[area_col].apply(norm_upper)
+    base["area_display"] = base[area_col].astype(str).str.strip().str.title()
+    base[status_col] = base[status_col].astype(str).str.strip().str.lower()
+
+    base = base.dropna(subset=["_id", "area_key", "Primary Property Type", status_col])
+    base["_id"] = base["_id"].astype(int)
+
+    # One row per (building, area, property type) within year
+    base = base.drop_duplicates(
+        subset=["_id", "area_key", "Primary Property Type"]
+    ).copy()
+
+    return base.rename(columns={"_id": "Building ID"})[
+        ["Building ID", "area_key", "area_display", "Primary Property Type", status_col]
+    ]
+
+
+def build_area_table_overall(
+    base: pd.DataFrame,
+    status_col: str = "compliance_status",
+) -> pd.DataFrame:
+    """Community-area table (overall)."""
+    data = base.copy()
+    counts = (
+        data.groupby(["area_key", "area_display", status_col], as_index=False)
+        .size()
+        .pivot_table(
+            index=["area_key", "area_display"],
+            columns=status_col,
+            values="size",
+            fill_value=0,
+            aggfunc="sum",
+        )
+        .reset_index()
+    )
+
+    for col in ["compliant", "non-compliant", "exempt"]:
+        if col not in counts.columns:
+            counts[col] = 0
+
+    counts = counts.rename(columns={"non-compliant": "non_compliant"})
+    counts["denom"] = counts["compliant"] + counts["non_compliant"]
+    counts["non_compliance_rate"] = counts["non_compliant"] / counts["denom"].replace(
+        0, pd.NA
+    )
+
+    return counts[
+        [
+            "area_key",
+            "area_display",
+            "compliant",
+            "non_compliant",
+            "exempt",
+            "denom",
+            "non_compliance_rate",
+        ]
+    ]
+
+
+def build_area_table_by_property(
+    base: pd.DataFrame,
+    top_n_property_types: int = 10,
+    id_col: str = "Building ID",
+    ptype_col: str = "Primary Property Type",
+    status_col: str = "compliance_status",
+) -> tuple[pd.DataFrame, list[str]]:
+    """Area × property type table for dropdown-filter choropleth.
+
+    Returns:
+      - area_type table with:
+          area_key, area_display, ptype_key,
+          compliant, non_compliant, denom, non_compliance_rate,
+          _lookup_key (= area_key + '|' + ptype_key)
+      - list of top property types (ptype_key)
+    """
+    data = base.copy()
+    data[status_col] = data[status_col].astype(str).str.strip().str.lower()
+    data = data[data[status_col].isin(["compliant", "non-compliant"])].copy()
+
+    top_ptypes = (
+        data.groupby(ptype_col)[id_col]
+        .nunique()
+        .sort_values(ascending=False)
+        .head(top_n_property_types)
+        .index.tolist()
+    )
+
+    data = data[data[ptype_col].isin(top_ptypes)].copy()
+
+    area_type = (
+        data.groupby(
+            ["area_key", "area_display", ptype_col, status_col], as_index=False
+        )
+        .size()
+        .pivot_table(
+            index=["area_key", "area_display", ptype_col],
+            columns=status_col,
+            values="size",
+            fill_value=0,
+            aggfunc="sum",
+        )
+        .reset_index()
+    )
+
+    for col in ["compliant", "non-compliant"]:
+        if col not in area_type.columns:
+            area_type[col] = 0
+
+    area_type = area_type.rename(
+        columns={
+            ptype_col: "ptype_key",
+            "non-compliant": "non_compliant",
+        }
+    )
+
+    area_type["denom"] = area_type["compliant"] + area_type["non_compliant"]
+    area_type["non_compliance_rate"] = area_type["non_compliant"] / area_type[
+        "denom"
+    ].replace(0, pd.NA)
+
+    area_type["_lookup_key"] = area_type["area_key"] + "|" + area_type["ptype_key"]
+
+    return area_type[
+        [
+            "area_key",
+            "area_display",
+            "ptype_key",
+            "compliant",
+            "non_compliant",
+            "denom",
+            "non_compliance_rate",
+            "_lookup_key",
+        ]
+    ], top_ptypes
 
 
 def compliance_by_category(

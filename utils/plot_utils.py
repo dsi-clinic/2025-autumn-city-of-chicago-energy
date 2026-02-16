@@ -1535,10 +1535,26 @@ def plot_noncompliance_per_year(
 ) -> alt.Chart:
     """Plot overall non-compliance choropleth given a precomputed `area` table.
 
-    Required columns in `area`:
-      - area_key
-      - area_display
-      - compliant, non_compliant, total, non_compliance_rate
+    Parameters
+    ----------
+    chi_geo : dict
+        Chicago community area GeoJSON.
+    area : pd.DataFrame
+        Output of build_area_table_overall().
+        Required columns [area_key, area_display, compliant, non_compliant, total, non_compliance_rate]
+    geo_area_name_key : str
+        GeoJSON property used to match community areas.
+    color_field : str
+        Column to visualize (e.g., "non_compliance_rate").
+    year : int | None
+        Year used for title display.
+    title : str | None
+        Custom chart title.
+
+    Returns:
+    -------
+    alt.Chart
+        Altair choropleth map.
     """
     if color_field not in area.columns:
         raise ValueError(f"color_field='{color_field}' not found in area table.")
@@ -1628,10 +1644,31 @@ def plot_noncompliance_by_property(
 ) -> alt.Chart:
     """Plot non-compliance choropleth with property-type dropdown given precomputed tables.
 
-    Expected columns in `area_type`:
-      - area_key, area_display, ptype_key
-      - compliant, non_compliant, denom, non_compliance_rate
-      - _lookup_key = area_key|ptype_key
+    Parameters
+    ----------
+    chi_geo : dict
+        Chicago community area GeoJSON.
+    area_type : pd.DataFrame
+        Output of build_area_table_by_property().
+        Expected columns:
+            - area_key, area_display, ptype_key
+            - compliant, non_compliant, denom, non_compliance_rate
+            - _lookup_key = area_key|ptype_key
+    top_ptypes : list[str]
+        List of property types to include in dropdown.
+    geo_area_name_key : str
+        GeoJSON property used to match community areas.
+    color_field : str
+        Column to visualize.
+    year : int | None
+        Year used for title display.
+    title : str | None
+        Custom chart title.
+
+    Returns:
+    -------
+    alt.Chart
+        Interactive Altair choropleth map.
     """
     if not top_ptypes:
         raise ValueError("top_ptypes is empty. Nothing to bind dropdown to.")

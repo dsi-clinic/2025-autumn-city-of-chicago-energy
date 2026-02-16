@@ -964,6 +964,28 @@ def add_compliance_status(
     - For non-exempt rows:
         - reported -> 'compliant'
         - not reported -> 'non-compliant'
+
+    Parameters
+    ----------
+    energy_data : pd.DataFrame
+        Full energy benchmarking dataset.
+    energy_cols : list[str]
+        Columns used to determine whether a building has reported
+        valid energy data.
+    reporting_status_col : str, default "Reporting Status"
+        Column containing raw reporting status values.
+    exempt_col : str, default "Exempt From Chicago Energy Rating"
+        Column indicating exemption status (True/False).
+    allowed_statuses : list[str] | None
+        Reporting statuses that count as "submitted".
+    output_col : str
+        Name of the new compliance status column.
+
+    Returns:
+    -------
+    pd.DataFrame
+        DataFrame with a new column `output_col`
+        containing compliance labels.
     """
     data = energy_data if inplace else energy_data.copy()
 
@@ -1016,8 +1038,25 @@ def build_compliance_base_year(
 
     Uses the explicit compliance_status in energy_data.
 
-    Returns columns:
-      [id_col, area_key, area_display, ptype_norm, compliance_status]
+    Parameters
+    ----------
+    energy_data : pd.DataFrame
+        Energy dataset containing compliance_status.
+    year : int
+        Target reporting year.
+    year_col : str
+        Year column name.
+    id_col : str
+        Building ID column.
+    area_col : str
+        Community area column.
+    property_type_col : str
+        Property type column.
+    status_col : str
+        Compliance status column.
+
+    Returns pd.DataFrame with columns:
+      [id_col, area_key, area_display, primary property type, compliance_status]
     """
 
     def norm_upper(x: str | None) -> str | None:
@@ -1050,7 +1089,28 @@ def build_area_table_overall(
     base: pd.DataFrame,
     status_col: str = "compliance_status",
 ) -> pd.DataFrame:
-    """Community-area table (overall)."""
+    """Compute overall compliance counts and non-compliance rates by community area.
+
+    Excludes exempt buildings from the rate denominator.
+
+    Parameters
+    ----------
+    base : pd.DataFrame
+        Output of build_compliance_base_year().
+    status_col : str
+        Compliance status column name.
+
+    Returns:
+    -------
+    pd.DataFrame with:
+        - area_key
+        - area_display
+        - compliant
+        - non_compliant
+        - exempt
+        - denom (compliant + non_compliant)
+        - non_compliance_rate
+    """
     data = base.copy()
     counts = (
         data.groupby(["area_key", "area_display", status_col], as_index=False)
@@ -1095,7 +1155,23 @@ def build_area_table_by_property(
     ptype_col: str = "Primary Property Type",
     status_col: str = "compliance_status",
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Area × property type table for dropdown-filter choropleth.
+    """Compute compliance statistics by community area and property type.
+
+    Only includes the top N property types by building count.
+    Excludes exempt buildings from the rate denominator.
+
+    Parameters
+    ----------
+    base : pd.DataFrame
+        Output of build_compliance_base_year().
+    top_n_property_types : int
+        Number of most common property types to include.
+    id_col : str
+        Building ID column.
+    ptype_col : str
+        Property type column.
+    status_col : str
+        Compliance status column.
 
     Returns:
       - area_type table with:
@@ -1176,6 +1252,26 @@ def compliance_by_category(
     """Compute compliance and non-compliance rates by a categorical variable (e.g., property type, sector) for a given year.
 
     Excludes 'exempt' from denominator.
+
+    Parameters
+    ----------
+    energy_data : pd.DataFrame
+        Dataset containing compliance_status.
+    year : int
+        Target year.
+    category_col : str
+        Column to group by (e.g., property type, sector).
+    year_col : str
+        Year column name.
+    id_col : str
+        Building ID column.
+    status_col : str
+        Compliance status column.
+
+    Returns:
+    -------
+    pd.DataFrame with columns:
+        [category_col, compliant, non_compliant, total, non_compliance_rate]
     """
     if status_col not in energy_data.columns:
         raise KeyError(f"'{status_col}' not found. Run add_compliance_status() first.")

@@ -6,7 +6,9 @@ for the Chicago Energy Benchmarking dataset.
 
 import logging
 
+import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 import statsmodels.formula.api as smf
 from statsmodels.regression.linear_model import RegressionResultsWrapper
 
@@ -308,3 +310,81 @@ def map_community(community: str) -> str:
         return MAPPING_DICT[community_normalized]
 
     return community.title()
+
+
+def check_var_count_for_var(col_list: list, col_index: str, data: pd.DataFrame) -> None:
+    """Checking how much missing data there is for columns with the index column"""
+    total_build = len(data["ID"].unique())
+    for col in col_list:
+        missing_count = data[col].isna().sum()
+        total = len(data)
+        print(f"{col}: {missing_count} missing rows ({missing_count/total:.2%})")
+
+        index_missing = data.groupby(col_index)[col].apply(lambda x: x.isna().sum())
+        print(f"Missing data (NA) {col} by Year:")
+        if index_missing.sum() > 0:
+            print(index_missing)
+
+        gaps = data.groupby("ID")[col].apply(lambda x: x.isna().any()).sum()
+        print(
+            f"# of Buildings with at least 1 missing of {col}: {gaps} ({gaps/total_build:.2%}%) buildings \n"
+        )
+
+
+def ols_compare_and_pred_plot(
+    formula: str,
+    x_var: str,
+    y_var: str,
+    main_data: pd.DataFrame,
+    train_data: pd.DataFrame,
+    test_data: pd.DataFrame,
+    Compare_show: bool = True,
+) -> None:
+    """Doing OLS regression with"""
+    model = smf.ols(formula, data=train_data).fit()
+    print(model.summary())
+
+    test_data["Predicted_EUI"] = model.predict(test_data)
+    if Compare_show:
+        plot_configs = [
+            (main_data, y_var, "Variable Comparison"),
+            (test_data, "Predicted_EUI", "Model Predictions (Actual vs Predicted)"),
+        ]
+    else:
+        plot_configs = [
+            (test_data, "Predicted_EUI", "Model Predictions (Actual vs Predicted)"),
+        ]
+
+    for df, y_col, title_suffix in plot_configs:
+        plt.figure(figsize=(8, 6))
+
+        sns.regplot(
+            data=df,
+            x=x_var,
+            y=y_col,
+            scatter_kws={"s": 10, "alpha": 0.5},
+            line_kws={"color": "blue", "linewidth": 2},
+            label="Data",
+        )
+
+        ax = plt.gca()
+        x_limits = ax.get_xlim()
+        y_limits = ax.get_ylim()
+
+        min_val = min(x_limits[0], y_limits[0])
+        max_val = max(x_limits[1], y_limits[1])
+
+        plt.plot(
+            [min_val, max_val],
+            [min_val, max_val],
+            color="red",
+            linestyle="--",
+            label="45° Identity Line",
+        )
+
+        plt.xlabel(x_var)
+        plt.ylabel(y_col)
+        plt.title(f"{title_suffix}\n(X={x_var}, Y={y_col})")
+        plt.legend()
+        plt.grid(True, linestyle="--", alpha=0.5)
+        plt.show()

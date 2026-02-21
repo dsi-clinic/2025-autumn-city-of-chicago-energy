@@ -6,6 +6,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 import numpy as np
 import pandas as pd
@@ -434,32 +435,40 @@ def covid_impact_category(
     return energy_df
 
 
-def assign_effective_year_built(df: pd.DataFrame) -> pd.DataFrame:
-    """Assigns the 'Effective Year Built' for each building ID.
+def assign_effective_year_built(buildings: pd.DataFrame) -> pd.DataFrame:
+    """Add an 'Effective Year Built' column per building ID.
 
-    If one unique non-NaN year exists, it is assigned; if multiple years exist, assigns 'Multiple Years Built'; otherwise assigns np.nan.
+    Rules (computed within each ID group):
+    - If there is exactly one unique non-null Year Built, assign that year to all rows.
+    - If there are multiple unique non-null Year Built values, assign "Multiple Years Built".
+    - If all Year Built values are null, assign NaN.
 
-    Args:
-        df (pd.DataFrame): DataFrame with columns 'ID' and 'Year Built'.
+    Parameters
+    ----------
+    buildings:
+        DataFrame containing at least 'ID' and 'Year Built'.
 
     Returns:
-        pd.DataFrame: Original DataFrame with new 'Effective Year Built' column.
+    -------
+    pd.DataFrame
+        Copy of input with an added 'Effective Year Built' column.
     """
+    out = buildings.copy()
 
-    def get_years(series: pd.Series) -> np.ndarray:
-        unique_years = series.dropna().unique()
-        if len(unique_years) == 1:
-            # Building has one unique non-NaN value (regardless of number of NaNs)
-            return np.repeat(unique_years[0], len(series))
-        elif len(unique_years) > 1:
-            # Building has multiple non-NaN values
-            return np.repeat("Multiple Years Built", len(series))
-        else:
-            # Building has only NaNs
-            return np.repeat(np.nan, len(series))
+    # Count distinct, non-null years per ID
+    n_unique = out.groupby("ID")["Year Built"].transform(lambda s: s.dropna().nunique())
 
-    df["Effective Year Built"] = df.groupby("ID")["Year Built"].transform(get_years)
-    return df
+    # The single (non-null) year, repeated per row (NaN if none)
+    single_year = out.groupby("ID")["Year Built"].transform("first")
+
+    # Build result
+    out["Effective Year Built"] = np.where(
+        n_unique == 1,
+        single_year,
+        np.where(n_unique > 1, "Multiple Years Built", np.nan),
+    )
+
+    return out
 
 
 def categorize_time_built(df: pd.DataFrame) -> pd.date_range:
@@ -659,30 +668,43 @@ def load_national_eui_data() -> dict:
     return pd.DataFrame(national_data)
 
 
-def load_major_us_cities() -> dict:
-    """Load all CSV files from major_us_cities_data folder.
+def load_major_us_cities() -> dict[str, pd.DataFrame]:
+    """Load all major US city datasets.
 
-    Returns a dict: {<file_stem>: DataFrame}
+    - Top-level CSV files are loaded directly.
+    - Boston_data folder is loaded using load_boston_energy_data().
+    - Returns: {key: DataFrame}
     """
     path = DATA_DIR / "major_us_cities_data"
 
-    # Backup path for notebooks in /project environments
+    # Backup path for /project environments
     if not path.exists():
         path = Path("/project") / "data" / "major_us_cities_data"
 
     if not path.exists():
         raise FileNotFoundError(f"Data directory not found: {path}")
 
-    csv_files = list(path.glob("*.csv"))
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV files found in {path}")
+    city_data: dict[str, pd.DataFrame] = {}
 
-    city_data = {}
+    csv_files = sorted(path.glob("*.csv"))
+
     for file in csv_files:
-        df_city = pd.read_csv(file)
-        key = file.stem  # filename without extension
+        df_city = pd.read_csv(file, low_memory=False)
+        key = file.stem
         city_data[key] = df_city
-        logger.info(f"Loaded {file.name} → {df_city.shape}")
+        logger.info("Loaded %s → %s", file.name, df_city.shape)
+
+    boston_folder = path / "Boston_data"
+    if boston_folder.exists():
+        df_boston = load_boston_energy_data(boston_folder)
+        city_data["boston_energy_raw"] = df_boston
+        logger.info(
+            "Loaded Boston_data folder → %s",
+            df_boston.shape,
+        )
+
+    if not city_data:
+        raise FileNotFoundError(f"No datasets found in {path}")
 
     return city_data
 
@@ -979,3 +1001,336 @@ def seattle_to_chicago(seattle_df: pd.DataFrame) -> pd.DataFrame:
             out[c] = pd.NA
 
     return out[CHICAGO_COLS].copy()
+
+
+MAJOR_US_CITIES_DIR: Final[Path] = Path("data") / "major_us_cities_data"
+
+
+def _infer_year_from_name(filename: str) -> int | None:
+    match = re.search(r"(19|20)\d{2}", filename)
+    if match is None:
+        return None
+    return int(match.group(0))
+
+
+def _unnamed_share(columns: pd.Index) -> float:
+    cols = columns.astype(str)
+    if len(cols) == 0:
+        return 1.0
+    n_unnamed = cols.str.match(r"^Unnamed").sum()
+    return n_unnamed / len(cols)
+
+
+def _read_boston_excel(path: Path) -> pd.DataFrame:
+    candidates: list[pd.DataFrame] = []
+    for header in (0, 1, 2, 3, 4, 5):
+        dff = pd.read_excel(path, engine="openpyxl", header=header)
+        dff.columns = [str(c).strip() for c in dff.columns]
+        dff = dff.dropna(how="all")
+
+        candidates.append(dff)
+
+    # Choose the version with the lowest share of Unnamed columns
+    best = min(candidates, key=lambda d: _unnamed_share(pd.Index(d.columns)))
+    return best
+
+
+def _read_boston_file(path: Path) -> pd.DataFrame:
+    suffix = path.suffix.lower()
+
+    if suffix == ".csv":
+        try:
+            dff = pd.read_csv(path, low_memory=False)
+        except UnicodeDecodeError:
+            dff = pd.read_csv(path, low_memory=False, encoding="latin-1")
+
+        dff.columns = [str(c).strip() for c in dff.columns]
+        dff = dff.loc[:, ~pd.Index(dff.columns).astype(str).str.match(r"^Unnamed")]
+        dff = dff.dropna(axis=1, how="all").dropna(how="all")
+        return dff
+
+    if suffix in {".xlsx", ".xls"}:
+        boston_df = _read_boston_excel(path)
+        boston_df = boston_df.loc[
+            :,
+            ~pd.Index(boston_df.columns).astype(str).str.match(r"^Unnamed"),
+        ]
+        boston_df = boston_df.dropna(axis=1, how="all").dropna(how="all")
+        return boston_df
+
+    raise ValueError(f"Unsupported file type: {path.suffix}")
+
+
+def load_boston_energy_data(
+    folder: str | Path | None = None,
+    *,
+    recursive: bool = False,
+    city_name: str = "Boston",
+    year_col: str = "Data Year",
+) -> pd.DataFrame:
+    """Load Boston energy benchmarking data from a folder.
+
+    Loads multiple CSV/XLSX files and returns a single concatenated DataFrame.
+
+    Adds:
+      - City
+      - source_file
+      - Data Year (inferred from filename if missing)
+    """
+    if folder is None:
+        folder_path = MAJOR_US_CITIES_DIR / "Boston_data"
+    else:
+        folder_path = Path(folder)
+
+    if not folder_path.exists():
+        raise FileNotFoundError(f"Boston folder not found: {folder_path.resolve()}")
+
+    glob_pattern = "**/*" if recursive else "*"
+    files = sorted(
+        list(folder_path.glob(f"{glob_pattern}.csv"))
+        + list(folder_path.glob(f"{glob_pattern}.xlsx"))
+        + list(folder_path.glob(f"{glob_pattern}.xls"))
+    )
+
+    if not files:
+        raise FileNotFoundError(
+            f"No CSV/XLSX files found in Boston folder: {folder_path.resolve()}"
+        )
+
+    frames: list[pd.DataFrame] = []
+    for path in files:
+        boston_df = _read_boston_file(path)
+        boston_df["City"] = city_name
+        boston_df["source_file"] = path.name
+
+        if year_col not in boston_df.columns:
+            inferred = _infer_year_from_name(path.name)
+            if inferred is not None:
+                boston_df[year_col] = inferred
+
+        frames.append(boston_df)
+
+    out = pd.concat(frames, ignore_index=True, sort=False)
+
+    if year_col in out.columns:
+        out[year_col] = pd.to_numeric(out[year_col], errors="coerce").astype("Int64")
+
+    return out
+
+
+def _normalize_colname(name: str) -> str:
+    """Normalize a column name for matching (lowercase, remove symbols/spaces)."""
+    s = name.strip().lower()
+    s = re.sub(r"[^\w]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def coalesce_columns(
+    df: pd.DataFrame,
+    groups: dict[str, list[str]],
+    *,
+    drop_sources: bool = True,
+) -> pd.DataFrame:
+    """Create canonical columns by taking first non-null across source columns."""
+    out = df.copy()
+
+    for target, sources in groups.items():
+        existing = [c for c in sources if c in out.columns]
+        if not existing:
+            continue
+
+        series = out[existing[0]]
+        for c in existing[1:]:
+            series = series.combine_first(out[c])
+
+        out[target] = series
+
+        if drop_sources:
+            drop_cols = [c for c in existing if c != target]
+            out = out.drop(columns=drop_cols, errors="ignore")
+
+    return out
+
+
+def harmonize_boston_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Combine Boston duplicate columns into a single canonical set."""
+    groups = {
+        # Identifiers
+        "Property Name": ["Property Name"],
+        "Address": ["Address", "Building Address", "Parcel Address"],
+        "ZIP": [
+            "ZIP",
+            "Zip",
+            "Building Address Zip Code",
+            "Parcel Address Zip Code",
+            "Building Address Zip  Code",
+        ],
+        # Types
+        "Primary Property Type": [
+            "Property Type",
+            "Reported Property Type",
+            "Largest Property Type",
+        ],
+        # Floor area
+        "Gross Floor Area (sq ft)": [
+            "Gross Area (sq ft)",
+            "Reported Gross Floor Area (Sq Ft)",
+        ],
+        # EUI
+        "Site EUI (kBtu/sq ft)": [
+            "Site EUI (kBTU/sf)",
+            "Site EUI (kBtu/ft²)",
+            "Site EUI (Energy Use Intensity kBTu/ft²)",
+            "Site EUI (Energy Use Intensity kBtu/ft²)",
+        ],
+        # ENERGY STAR
+        "ENERGY STAR Score": ["Energy Star Score", "ENERGY STAR Score"],
+        "ENERGY STAR Certified": ["Energy Star Certified"],
+        # Energy totals
+        "Total Site Energy (kBtu)": [
+            "Total Site Energy (kBTU)",
+            "Total Site Energy Usage (kBtu)",
+        ],
+        # Water
+        "Water Intensity (gal/sq ft)": [
+            "Water Intensity (gal/sf)",
+            "Water Usage Intensity (Gallons/ft²)",
+        ],
+        # GHG
+        "GHG Emissions (MTCO2e)": ["GHG Emissions (MTCO2e)"],
+        "GHG Intensity (kgCO2e/sq ft)": ["GHG Intensity (kgCO2/sf)"],
+    }
+
+    out = df.copy()
+
+    # Fix the one common typo in your list
+    if (
+        "Cooresponding Campus ID" in out.columns
+        and "Corresponding Campus ID" not in out.columns
+    ):
+        out = out.rename(columns={"Cooresponding Campus ID": "Corresponding Campus ID"})
+
+    out = coalesce_columns(out, groups, drop_sources=True)
+
+    # Optional: strip whitespace in key string fields
+    for col in ["Property Name", "Address", "ZIP", "Primary Property Type"]:
+        if col in out.columns:
+            out[col] = out[col].astype(str).str.strip().replace({"nan": pd.NA})
+
+    return out
+
+
+def boston_to_chicago(boston_df: pd.DataFrame) -> pd.DataFrame:
+    """Map Boston benchmarking data into Chicago's schema.
+
+    Boston input is your harmonized Boston dataset (after harmonize_boston_columns),
+    with columns like: Property Name, Address, ZIP, BERDO ID, Primary Property Type,
+    Gross Floor Area (sq ft), Site EUI (kBtu/sq ft), ENERGY STAR Score,
+    Electricity Usage (kBtu), Natural Gas Usage (kBtu), District Steam Usage (kBtu),
+    District Chilled Water Usage (kBtu), Fuel Oil * Usage (kBtu), etc.
+    """
+    out = pd.DataFrame(index=boston_df.index)
+
+    # Required Chicago identifiers
+    out["Data Year"] = pd.to_numeric(
+        boston_df.get("Data Year"), errors="coerce"
+    ).astype("Int64")
+    out["ID"] = boston_df.get("BERDO ID").combine_first(boston_df.get("Tax Parcel ID"))
+    out["Property Name"] = boston_df.get("Property Name")
+    out["Address"] = boston_df.get("Address")
+    out["ZIP Code"] = boston_df.get("ZIP")
+    out["Community Area"] = pd.NA
+    out["Primary Property Type"] = boston_df.get("Primary Property Type")
+
+    # Buildings / floor area
+    out["Gross Floor Area - Buildings (sq ft)"] = pd.to_numeric(
+        boston_df.get("Gross Floor Area (sq ft)"),
+        errors="coerce",
+    )
+    out["Year Built"] = pd.to_numeric(
+        boston_df.get("Year Built"), errors="coerce"
+    ).astype("Int64")
+    out["# of Buildings"] = pd.NA
+
+    # ENERGY STAR + EUI
+    out["ENERGY STAR Score"] = pd.to_numeric(
+        boston_df.get("ENERGY STAR Score"),
+        errors="coerce",
+    ).astype("Int64")
+
+    out["Site EUI (kBtu/sq ft)"] = pd.to_numeric(
+        boston_df.get("Site EUI (kBtu/sq ft)"),
+        errors="coerce",
+    )
+    out["Source EUI (kBtu/sq ft)"] = pd.NA
+    out["Weather Normalized Site EUI (kBtu/sq ft)"] = pd.NA
+    out["Weather Normalized Source EUI (kBtu/sq ft)"] = pd.NA
+
+    # Energy by fuel (kBtu)
+    out["Electricity Use (kBtu)"] = pd.to_numeric(
+        boston_df.get("Electricity Usage (kBtu)"),
+        errors="coerce",
+    )
+    out["Natural Gas Use (kBtu)"] = pd.to_numeric(
+        boston_df.get("Natural Gas Usage (kBtu)"),
+        errors="coerce",
+    )
+    out["District Steam Use (kBtu)"] = pd.to_numeric(
+        boston_df.get("District Steam Usage (kBtu)"),
+        errors="coerce",
+    )
+    out["District Chilled Water Use (kBtu)"] = pd.to_numeric(
+        boston_df.get("District Chilled Water Usage (kBtu)"),
+        errors="coerce",
+    )
+
+    # Chicago has "All Other Fuel Use" (Boston has several components)
+    other_fuels = [
+        "District Hot Water Usage (kBtu)",
+        "Fuel Oil 1 Usage (kBtu)",
+        "Fuel Oil 2 Usage (kBtu)",
+        "Fuel Oil 4 Usage (kBtu)",
+        "Fuel Oil 5 and 6 Usage (kBtu)",
+        "Propane Usage (kBtu)",
+        "Diesel Usage (kBtu)",
+        "Kerosene Usage (kBtu)",
+        "Renewable System Electricity Usage Onsite (kBtu)",
+    ]
+
+    present = [c for c in other_fuels if c in boston_df.columns]
+    if present:
+        other_numeric = boston_df[present].apply(pd.to_numeric, errors="coerce")
+        out["All Other Fuel Use (kBtu)"] = other_numeric.sum(axis=1, min_count=1)
+    else:
+        out["All Other Fuel Use (kBtu)"] = pd.NA
+
+    # GHG
+    out["Total GHG Emissions (Metric Tons CO2e)"] = pd.to_numeric(
+        boston_df.get("GHG Emissions (MTCO2e)"),
+        errors="coerce",
+    )
+    out["GHG Intensity (kg CO2e/sq ft)"] = pd.to_numeric(
+        boston_df.get("GHG Intensity (kgCO2e/sq ft)"),
+        errors="coerce",
+    )
+
+    # Location fields (not in Boston)
+    out["Latitude"] = pd.NA
+    out["Longitude"] = pd.NA
+    out["Location"] = pd.NA
+
+    # Status / ratings
+    out["Reporting Status"] = boston_df.get(
+        "Reporting Compliance Status"
+    ).combine_first(boston_df.get("Compliance Status"))
+    out["Chicago Energy Rating"] = pd.NA
+    out["Exempt From Chicago Energy Rating"] = pd.NA
+
+    # Water (Chicago is kGal; Boston is intensity, not total)
+    out["Water Use (kGal)"] = pd.NA
+
+    # Row id (not in Boston)
+    out["Row_ID"] = pd.NA
+
+    return out

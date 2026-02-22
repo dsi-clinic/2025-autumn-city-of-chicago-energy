@@ -322,7 +322,7 @@ def check_var_count_for_var(
     """Checking how much missing data there is for columns with the g column
 
     col_list: list of all column names that are going to be used
-    grouping_col:
+    grouping_col: The variable that the groupby is done by
     """
     total_build = len(data[id_col].unique())
     for col in col_list:

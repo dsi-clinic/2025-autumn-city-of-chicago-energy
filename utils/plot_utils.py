@@ -22,7 +22,7 @@ import pandas as pd
 import seaborn as sns
 from statsmodels.regression.linear_model import RegressionResultsWrapper
 
-from utils.stats_utils import extract_model_coefficients
+from utils.fix_effect_utils import extract_model_coefficients
 
 # ----------Comparable analysis (Bar charts and delta charts)-----------
 
@@ -1727,8 +1727,9 @@ def plotting_FE_star_coef(formula_list: list) -> plt.Figure:
     - Y axis: Coefficient Value (Numeric)
 
     Input:
-    - List of tuples
-    - Within tuple -> (RegressionResultsWrapper, 'Formula Name')
+    - List of tuples of all the models that will be plotted
+        - All the models must have the same coefficients
+        - Within tuple -> (RegressionResultsWrapper, 'Formula Name')
     """
     # --- 1. DATA PREP ---
     df_coef = extract_model_coefficients(formula_list)

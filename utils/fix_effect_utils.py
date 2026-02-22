@@ -143,7 +143,11 @@ def extract_model_coefficients(formula_list: list) -> pd.DataFrame:
     specifically for Star Ratings from a list of Statsmodels results.
     Input:
     - List of tuples
-    - Within tuple -> (RegressionResultsWrapper, 'Formula Name')
+        - Within tuple -> (coefficient list, 'Formula Name')
+            - coefficient list example: list(model.items())[0][1]
+        - tuple exampled: base = (list(sensitivity_list.items())[0][1], "Base")
+
+    - List example: [base, with_eui, with_eui_year, with_eui_year_age]
     """
     df_list = []
 
@@ -312,20 +316,26 @@ def map_community(community: str) -> str:
     return community.title()
 
 
-def check_var_count_for_var(col_list: list, col_index: str, data: pd.DataFrame) -> None:
-    """Checking how much missing data there is for columns with the index column"""
-    total_build = len(data["ID"].unique())
+def check_var_count_for_var(
+    col_list: list, grouping_col: str, data: pd.DataFrame, id_col: str = "ID"
+) -> None:
+    """Checking how much missing data there is for columns with the g column
+
+    col_list: list of all column names that are going to be used
+    grouping_col:
+    """
+    total_build = len(data[id_col].unique())
     for col in col_list:
         missing_count = data[col].isna().sum()
         total = len(data)
         print(f"{col}: {missing_count} missing rows ({missing_count/total:.2%})")
 
-        index_missing = data.groupby(col_index)[col].apply(lambda x: x.isna().sum())
+        index_missing = data.groupby(grouping_col)[col].apply(lambda x: x.isna().sum())
         print(f"Missing data (NA) {col} by Year:")
         if index_missing.sum() > 0:
             print(index_missing)
 
-        gaps = data.groupby("ID")[col].apply(lambda x: x.isna().any()).sum()
+        gaps = data.groupby(id_col)[col].apply(lambda x: x.isna().any()).sum()
         print(
             f"# of Buildings with at least 1 missing of {col}: {gaps} ({gaps/total_build:.2%}%) buildings \n"
         )
@@ -340,51 +350,135 @@ def ols_compare_and_pred_plot(
     test_data: pd.DataFrame,
     Compare_show: bool = True,
 ) -> None:
-    """Doing OLS regression with"""
+    """Doing OLS regression with with y_var on x_var
+
+    It plots the two variables to compare
+    and the predicted data with the actual data in the test data
+    """
     model = smf.ols(formula, data=train_data).fit()
     print(model.summary())
 
     test_data["Predicted_EUI"] = model.predict(test_data)
-    if Compare_show:
-        plot_configs = [
-            (main_data, y_var, "Variable Comparison"),
-            (test_data, "Predicted_EUI", "Model Predictions (Actual vs Predicted)"),
-        ]
-    else:
-        plot_configs = [
-            (test_data, "Predicted_EUI", "Model Predictions (Actual vs Predicted)"),
-        ]
+    try:
+        if Compare_show:
+            plot_configs = [
+                (main_data, x_var, y_var, "Variable Comparison"),
+                (
+                    test_data,
+                    "Predicted_EUI",
+                    y_var,
+                    f"Model Predictions with {x_var} (Predicted vs Actual)",
+                ),
+            ]
+        else:
+            plot_configs = [
+                (
+                    test_data,
+                    "Predicted_EUI",
+                    y_var,
+                    f"Model Predictions with {x_var} (Predicted vs Actual)",
+                ),
+            ]
 
-    for df, y_col, title_suffix in plot_configs:
-        plt.figure(figsize=(8, 6))
+        for df, x_col, y_col, title_suffix in plot_configs:
+            plt.figure(figsize=(8, 6))
 
-        sns.regplot(
-            data=df,
-            x=x_var,
-            y=y_col,
-            scatter_kws={"s": 10, "alpha": 0.5},
-            line_kws={"color": "blue", "linewidth": 2},
-            label="Data",
+            sns.regplot(
+                data=df,
+                x=x_col,
+                y=y_col,
+                scatter_kws={"s": 10, "alpha": 0.5},
+                line_kws={"color": "blue", "linewidth": 2},
+                label="Data",
+            )
+
+            ax = plt.gca()
+            x_limits = ax.get_xlim()
+            y_limits = ax.get_ylim()
+
+            min_val = min(x_limits[0], y_limits[0])
+            max_val = max(x_limits[1], y_limits[1])
+
+            plt.plot(
+                [min_val, max_val],
+                [min_val, max_val],
+                color="red",
+                linestyle="--",
+                label="45° Identity Line",
+            )
+
+            plt.xlabel(x_col)
+            plt.ylabel(y_col)
+            plt.title(f"{title_suffix}\n(X={x_col}, Y={y_col})")
+            plt.legend()
+            plt.grid(True, linestyle="--", alpha=0.5)
+            plt.show()
+    except Exception as e:
+        print(f"Error with feature '{x_var}': {e}")
+
+
+def plotting_r_sqared(
+    target_col: str,
+    quantative_features: list,
+    categorical_features: list,
+    train_df: pd.DataFrame,
+) -> None:
+    """This plots the r-sqaured value of the independent variable (features) on the dependent variable (target_col)
+
+    quantative_features example:
+        quantative_features = [
+            "Electricity Use (kBtu)",
+            "Building_Age",
+            "Site EUI (kBtu/sq ft)"]
+
+    categorical_features example:
+        categorical_features = [
+            "Primary Property Type",
+            "COVID Impact Category",
+            "Data Year"]
+
+    Train_df: can be any dataset
+    """
+    full_var = []
+    for q in quantative_features:
+        full_var.append(f"Q('{q}')")
+    for c in categorical_features:
+        full_var.append(f"C(Q('{c}'))")
+
+    r_squared_dict = {}
+
+    print(f"Running OLS on Target: {target_col}")
+    for feature in full_var:
+        try:
+            formula = f"Q('{target_col}') ~ {feature}"
+
+            model = smf.ols(formula, data=train_df).fit()
+
+            r_squared_dict[feature] = model.rsquared
+        except Exception as e:
+            print(f"Error with feature '{feature}': {e}")
+            r_squared_dict[feature] = 0
+
+    sorted_r2 = sorted(r_squared_dict.items(), key=lambda x: x[1], reverse=True)
+    features_sorted = [item[0] for item in sorted_r2]
+    r2_values_sorted = [item[1] for item in sorted_r2]
+
+    plt.figure(figsize=(12, 8))
+    bars = plt.barh(features_sorted, r2_values_sorted, color="skyblue")
+
+    for bar, r2 in zip(bars, r2_values_sorted):
+        width = bar.get_width()
+        plt.text(
+            width + 0.000005,
+            bar.get_y() + bar.get_height() / 2,
+            f"{r2:.3f}",
+            ha="left",
+            va="center",
+            fontsize=9,
         )
 
-        ax = plt.gca()
-        x_limits = ax.get_xlim()
-        y_limits = ax.get_ylim()
-
-        min_val = min(x_limits[0], y_limits[0])
-        max_val = max(x_limits[1], y_limits[1])
-
-        plt.plot(
-            [min_val, max_val],
-            [min_val, max_val],
-            color="red",
-            linestyle="--",
-            label="45° Identity Line",
-        )
-
-        plt.xlabel(x_var)
-        plt.ylabel(y_col)
-        plt.title(f"{title_suffix}\n(X={x_var}, Y={y_col})")
-        plt.legend()
-        plt.grid(True, linestyle="--", alpha=0.5)
-        plt.show()
+    plt.xlabel("R-squared")
+    plt.title(f"Feature Importance by R-squared of {target_col}")
+    plt.grid(axis="x", alpha=0.3, linestyle="--")
+    plt.tight_layout()
+    plt.show()

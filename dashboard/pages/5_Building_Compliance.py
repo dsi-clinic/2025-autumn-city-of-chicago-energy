@@ -4,6 +4,7 @@ import streamlit as st
 
 from utils.data_utils import (
     add_reporting_compliance_flags,
+    add_top_level_property_type,
     assign_effective_year_built,
     categorize_time_built,
     clean_property_type,
@@ -32,6 +33,7 @@ energy_df = clean_year_built(energy_df)
 energy_df = assign_effective_year_built(energy_df)
 energy_df = clean_property_type(energy_df)
 energy_df = categorize_time_built(energy_df)
+energy_df = add_top_level_property_type(energy_df)
 
 restriction_year = 2018
 # Apply standardized compliance logic (2018+)
@@ -61,24 +63,21 @@ variables = [
     "ENERGY STAR Score",
 ]
 
-category_options = ["Time Built", "Primary Property Type", "Community Area"]
+# --- Filter controls ---
+category_options = [
+    "Time Built",
+    "Primary Property Type",
+    "Top Level Property Type",
+    "Community Area",
+]
 category_col = st.selectbox(
     "Select category for Building Classification",
     options=category_options,
     index=category_options.index("Time Built"),
 )
 
-metric_option = st.selectbox(
-    "Compliance metric",
-    options=[
-        "Share of buildings compliant",
-        "Number of compliant buildings",
-        "Number of non‑compliant buildings",
-    ],
-    index=0,
-)
-
-col1, col2, col3 = st.columns(3)
+# Add Top Level Property Type multiselect alongside Primary Property Type
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     time_built_opts = sorted(energy_df["Time Built"].dropna().unique().tolist())
@@ -91,13 +90,18 @@ with col2:
     sel_ppt = st.multiselect("Primary Property Type", ppt_opts, default=ppt_opts)
 
 with col3:
+    tlpt_opts = sorted(energy_df["Top Level Property Type"].dropna().unique().tolist())
+    sel_tlpt = st.multiselect("Top Level Property Type", tlpt_opts, default=tlpt_opts)
+
+with col4:
     ca_opts = sorted(energy_df["Community Area"].dropna().unique().tolist())
     sel_ca = st.multiselect("Community Area", ca_opts, default=ca_opts)
 
-
+# Update the filtered dataset to include Top Level Property Type
 energy_df_filtered = energy_df[
     energy_df["Time Built"].isin(sel_time_built)
     & energy_df["Primary Property Type"].isin(sel_ppt)
+    & energy_df["Top Level Property Type"].isin(sel_tlpt)
     & energy_df["Community Area"].isin(sel_ca)
 ]
 

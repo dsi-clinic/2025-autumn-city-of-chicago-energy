@@ -1851,9 +1851,29 @@ def plot_compliance_rate_over_time(
     value_col: str,
     y_title: str,
 ) -> alt.Chart:
-    """Line chart of compliance metric over time, optionally grouped by category.
+    """Plot a time series of a compliance metric, optionally split by group.
 
-    Expects one row per (year, group).
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Aggregated dataframe with one row per (year, group) containing the metric
+        to be plotted.
+    year_col : str
+        Column name containing the year values on the x‑axis (e.g., "Data Year").
+    group_col : str
+        Column name used to distinguish series (e.g., property type, time built).
+    value_col : str
+        Column name of the numeric compliance metric to plot on the y‑axis
+        (e.g., share_submitted, n_non_compliant).
+    y_title : str
+        Human‑readable label for the y‑axis (e.g., "Share submitted").
+
+    Returns:
+    -------
+    alt.Chart
+        Altair line chart showing the compliance metric over time, with one line
+        per group if multiple groups are present, otherwise a single line without
+        a legend.
     """
     if df.empty:
         return alt.Chart(pd.DataFrame({year_col: [], value_col: []})).mark_line()
@@ -1890,10 +1910,32 @@ def plot_compliance_status_facets(
 ) -> alt.Chart:
     """Faceted stacked bar chart of counts by reporting status.
 
-    Expects df with one row per (year, group) and count columns:
-      - n_submitted_col
-      - n_exempt_col
-      - n_not_submitted_col
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Aggregated dataframe with one row per (year, group), containing counts of
+        buildings by reporting status.
+    year_col : str
+        Column name holding the year values used for faceting (e.g., "Data Year").
+    group_col : str
+        Column name used on the x‑axis to group buildings (e.g., property type,
+        community area).
+    n_submitted_col : str
+        Column name in `df` with the count of submitted buildings for each
+        (year, group).
+    n_exempt_col : str
+        Column name in `df` with the count of exempt buildings for each
+        (year, group).
+    n_not_submitted_col : str
+        Column name in `df` with the count of non‑submitted buildings for each
+        (year, group).
+
+    Returns:
+    -------
+    alt.Chart
+        Altair faceted stacked bar chart where each facet represents a year,
+        the x‑axis shows `group_col`, and bars are stacked by reporting status
+        ("Submitted", "Exempt", "Not submitted") with counts on the y‑axis.
     """
     if df.empty:
         return alt.Chart(pd.DataFrame({group_col: [], year_col: []})).mark_bar()

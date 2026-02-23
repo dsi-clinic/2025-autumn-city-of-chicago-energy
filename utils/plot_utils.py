@@ -24,6 +24,16 @@ from statsmodels.regression.linear_model import RegressionResultsWrapper
 
 from utils.stats_utils import extract_model_coefficients
 
+
+def _geo_data(geo: dict) -> dict:
+    # Accept dict OR a pre-encoded data URL string
+    if isinstance(geo, str):
+        return alt.Data(
+            url=geo, format=alt.DataFormat(type="json", property="features")
+        )
+    return alt.Data(values=geo["features"])
+
+
 # ----------Comparable analysis (Bar charts and delta charts)-----------
 
 
@@ -1308,7 +1318,8 @@ def create_choropleth_layer(
 
     # Base map (grey background)
     base = (
-        alt.Chart(alt.Data(values=geojson["features"]))
+        # alt.Chart(alt.Data(values=geojson["features"]))
+        alt.Chart(_geo_data(geojson))
         .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
         .project(type="mercator")
         .properties(width=600, height=400)
@@ -1316,7 +1327,8 @@ def create_choropleth_layer(
 
     # Data overlay
     overlay = (
-        alt.Chart(alt.Data(values=geojson["features"]))
+        # alt.Chart(alt.Data(values=geojson["features"]))
+        alt.Chart(_geo_data(geojson))
         .mark_geoshape(stroke="white", strokeWidth=0.5)
         .transform_lookup(
             lookup=feature_id,
@@ -1473,14 +1485,16 @@ def plot_metric_change_map(
         title = f"Change in {metric} (Latest - Earliest Year, Multi-Year Buildings)"
 
         base = (
-            alt.Chart(alt.Data(values=geojson["features"]))
+            # alt.Chart(alt.Data(values=geojson["features"]))
+            alt.Chart(_geo_data(geojson))
             .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
             .project(type="mercator")
             .properties(width=600, height=400)
         )
 
         overlay = (
-            alt.Chart(alt.Data(values=geojson["features"]))
+            # alt.Chart(alt.Data(values=geojson["features"]))
+            alt.Chart(_geo_data(geojson))
             .mark_geoshape(stroke="white", strokeWidth=0.5)
             .transform_lookup(
                 lookup="properties.pri_neigh",
@@ -1507,110 +1521,174 @@ def plot_metric_change_map(
     return charts
 
 
-def noncompliance_choropleth_by_year(
-    energy_data: pd.DataFrame,
-    energy_reported: pd.DataFrame,
+def plot_noncompliance_per_year(
     chi_geo: dict,
-    year: int,
-    year_col: str = "Data Year",
-    id_col: str = "ID",
-    area_name_col: str = "Community Area",
+    area: pd.DataFrame,
     geo_area_name_key: str = "properties.community",
-    property_type_col: str = "Primary Property Type",
-    top_n_property_types: int = 10,
     color_field: str = "non_compliance_rate",
     scheme: str = "blues",
-    domain: tuple[float, float] | None = None,
+    domain: tuple[float, float] | None = (0.0, 1.0),
     width: int = 650,
     height: int = 550,
+    year: int | None = None,
     title: str | None = None,
-) -> tuple[alt.Chart, pd.DataFrame]:
-    """Denominator (total) = unique building IDs present in energy_data for that year
+) -> alt.Chart:
+    """Plot overall non-compliance choropleth given a precomputed `area` table.
 
-    Compliant = unique building IDs present in energy_reported for that year (your compliance rule)
-    Non-compliant = total - compliant
+    Parameters
+    ----------
+    chi_geo : dict
+        Chicago community area GeoJSON.
+    area : pd.DataFrame
+        Output of build_area_table_overall().
+        Required columns [area_key, area_display, compliant, non_compliant, total, non_compliance_rate]
+    geo_area_name_key : str
+        GeoJSON property used to match community areas.
+    color_field : str
+        Column to visualize (e.g., "non_compliance_rate").
+    year : int | None
+        Year used for title display.
+    title : str | None
+        Custom chart title.
 
-    Adds: dropdown selection over top N property types (by total buildings in that year),
-          and maps compliance/noncompliance for the selected type.
-    Returns: (alt.Chart, area_type_table)
+    Returns:
+    -------
+    alt.Chart
+        Altair choropleth map.
     """
-
-    def norm_str(x: str | None) -> str | None:
-        if pd.isna(x):
-            return pd.NA
-        return str(x).strip().upper()
-
-    base_y = energy_data.loc[
-        energy_data[year_col] == year, [id_col, area_name_col, property_type_col]
-    ].copy()
-    comp_y = energy_reported.loc[energy_reported[year_col] == year, [id_col]].copy()
-
-    base_y["_area_norm"] = base_y[area_name_col].apply(norm_str)
-    base_y["_ptype_norm"] = base_y[property_type_col].apply(norm_str)
-
-    base_y["_id_int"] = pd.to_numeric(base_y[id_col], errors="coerce")
-    comp_y["_id_int"] = pd.to_numeric(comp_y[id_col], errors="coerce")
-
-    base_y = base_y.dropna(subset=["_area_norm", "_ptype_norm", "_id_int"])
-    comp_y = comp_y.dropna(subset=["_id_int"])
-
-    base_y["_id_int"] = base_y["_id_int"].astype(int)
-    comp_y["_id_int"] = comp_y["_id_int"].astype(int)
-
-    compliant_ids = set(comp_y["_id_int"].unique())
-
-    base_y = base_y.drop_duplicates(subset=["_area_norm", "_ptype_norm", "_id_int"])
-    base_y["is_compliant"] = base_y["_id_int"].isin(compliant_ids)
-
-    # choose top N property types
-    top_ptypes = (
-        base_y.groupby("_ptype_norm")["_id_int"]
-        .nunique()
-        .sort_values(ascending=False)
-        .head(top_n_property_types)
-        .index.tolist()
-    )
-    if len(top_ptypes) == 0:
-        raise ValueError(f"No property types available for year={year} after cleaning.")
-
-    base_y_top = base_y[base_y["_ptype_norm"].isin(top_ptypes)].copy()
-
-    area_type = (
-        base_y_top.groupby(["_area_norm", "_ptype_norm"])["is_compliant"]
-        .agg(compliant="sum", total="size")
-        .reset_index()
-        .rename(
-            columns={"_area_norm": "Community Area", "_ptype_norm": "Property Type"}
-        )
-    )
-    area_type["non_compliant"] = area_type["total"] - area_type["compliant"]
-    area_type["non_compliance_rate"] = area_type["non_compliant"] / area_type[
-        "total"
-    ].replace(0, pd.NA)
-
-    area_type["_lookup_key"] = (
-        area_type["Community Area"] + "|" + area_type["Property Type"]
-    )
-
-    if color_field not in area_type.columns:
-        raise ValueError(
-            f"color_field='{color_field}' not found. Choose from: {list(area_type.columns)}"
-        )
+    if color_field not in area.columns:
+        raise ValueError(f"color_field='{color_field}' not found in area table.")
 
     if title is None:
         pretty = {
-            "non_compliant": "Non-Compliant Buildings (Count)",
             "non_compliance_rate": "Non-Compliance Rate",
-            "compliant": "Compliant Buildings (Count)",
-            "total": "Total Buildings (Denominator)",
-        }.get(color_field, color_field)
-        title = f"{pretty} by Community Area — selected property type ({year})"
+            "non_compliant": "Non-Compliant Buildings",
+            "compliant": "Compliant Buildings",
+            "exempt": "Exempt Buildings",
+        }.get(color_field, color_field.replace("_", " ").title())
 
-    scale = (
-        alt.Scale(scheme=scheme)
-        if domain is None
-        else alt.Scale(scheme=scheme, domain=list(domain))
+        if year is not None:
+            title = f"{pretty} by Community Area ({year})"
+        else:
+            title = f"{pretty} by Community Area"
+
+    scale = alt.Scale(scheme=scheme, domain=list(domain) if domain else None)
+
+    base = (
+        alt.Chart(_geo_data(chi_geo))
+        .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
+        .project(type="mercator")
+        .properties(width=width, height=height)
     )
+
+    overlay = (
+        alt.Chart(_geo_data(chi_geo))
+        .mark_geoshape(stroke="white", strokeWidth=0.5)
+        .project(type="mercator")
+        .transform_lookup(
+            lookup=geo_area_name_key,
+            from_=alt.LookupData(
+                area,
+                key="area_key",
+                fields=[
+                    "area_display",
+                    "compliant",
+                    "non_compliant",
+                    "denom",
+                    "non_compliance_rate",
+                    "exempt",
+                    color_field,
+                ],
+            ),
+        )
+        .encode(
+            color=alt.condition(
+                f"isValid(datum['{color_field}'])",
+                alt.Color(
+                    f"{color_field}:Q",
+                    title="Non-Compliance Rate"
+                    if color_field == "non_compliance_rate"
+                    else color_field,
+                    scale=scale,
+                ),
+                alt.value("lightgrey"),
+            ),
+            tooltip=[
+                alt.Tooltip("area_display:N", title="Community Area"),
+                alt.Tooltip("compliant:Q", title="Compliant"),
+                alt.Tooltip("non_compliant:Q", title="Non-Compliant"),
+                alt.Tooltip("denom:Q", title="Compliant + Non-Compliant"),
+                alt.Tooltip(
+                    "non_compliance_rate:Q", title="Non-Compliance Rate", format=".1%"
+                ),
+                alt.Tooltip("exempt:Q", title="Exempt"),
+            ],
+        )
+    )
+
+    return (base + overlay).properties(title=title)
+
+
+def plot_noncompliance_by_property(
+    chi_geo: dict,
+    area_type: pd.DataFrame,
+    top_ptypes: list[str],
+    geo_area_name_key: str = "properties.community",
+    color_field: str = "non_compliance_rate",
+    scheme: str = "blues",
+    domain: tuple[float, float] | None = (0.0, 1.0),
+    width: int = 650,
+    height: int = 550,
+    year: int | None = None,
+    title: str | None = None,
+) -> alt.Chart:
+    """Plot non-compliance choropleth with property-type dropdown given precomputed tables.
+
+    Parameters
+    ----------
+    chi_geo : dict
+        Chicago community area GeoJSON.
+    area_type : pd.DataFrame
+        Output of build_area_table_by_property().
+        Expected columns:
+            - area_key, area_display, ptype_key
+            - compliant, non_compliant, denom, non_compliance_rate
+            - _lookup_key = area_key|ptype_key
+    top_ptypes : list[str]
+        List of property types to include in dropdown.
+    geo_area_name_key : str
+        GeoJSON property used to match community areas.
+    color_field : str
+        Column to visualize.
+    year : int | None
+        Year used for title display.
+    title : str | None
+        Custom chart title.
+
+    Returns:
+    -------
+    alt.Chart
+        Interactive Altair choropleth map.
+    """
+    if not top_ptypes:
+        raise ValueError("top_ptypes is empty. Nothing to bind dropdown to.")
+    if color_field not in area_type.columns:
+        raise ValueError(f"color_field='{color_field}' not found in area_type table.")
+
+    if title is None:
+        pretty = {
+            "non_compliance_rate": "Non-Compliance Rate",
+            "non_compliant": "Non-Compliant Buildings",
+            "compliant": "Compliant Buildings",
+            "denom": "Compliant + Non-Compliant",
+        }.get(color_field, color_field.replace("_", " ").title())
+        title = (
+            f"{pretty} by Community Area — selected property type ({year})"
+            if year is not None
+            else f"{pretty} by Community Area — selected property type"
+        )
+
+    scale = alt.Scale(scheme=scheme, domain=list(domain) if domain else None)
 
     ptype_sel = alt.param(
         name="PropertyType",
@@ -1618,213 +1696,63 @@ def noncompliance_choropleth_by_year(
         bind=alt.binding_select(options=top_ptypes, name="Property type: "),
     )
 
-    chart = (
-        alt.Chart(alt.Data(values=chi_geo["features"]))
+    geo_lookup_expr = f"upper(trim(datum.{geo_area_name_key})) + '|' + PropertyType"
+
+    base = (
+        alt.Chart(_geo_data(chi_geo))
+        .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
+        .project(type="mercator")
+        .properties(width=width, height=height)
+    )
+
+    overlay = (
+        alt.Chart(_geo_data(chi_geo))
         .mark_geoshape(stroke="white", strokeWidth=0.5)
         .project(type="mercator")
         .add_params(ptype_sel)
-        .transform_calculate(
-            _area_norm=f"upper(trim(datum.{geo_area_name_key}))",
-            _lookup_key="datum._area_norm + '|' + PropertyType",
-        )
+        .transform_calculate(_lookup_key=geo_lookup_expr)
         .transform_lookup(
             lookup="_lookup_key",
             from_=alt.LookupData(
                 area_type,
                 key="_lookup_key",
                 fields=[
-                    "Property Type",
+                    "area_display",
+                    "ptype_key",
                     "compliant",
                     "non_compliant",
-                    "total",
+                    "denom",
                     "non_compliance_rate",
                     color_field,
                 ],
             ),
         )
         .encode(
-            color=alt.Color(
-                f"{color_field}:Q",
-                title=color_field.replace("_", " ").title(),
-                scale=scale,
+            color=alt.condition(
+                alt.expr.isValid(alt.datum.denom),
+                alt.Color(
+                    f"{color_field}:Q",
+                    title="Non-Compliance Rate"
+                    if color_field == "non_compliance_rate"
+                    else color_field.replace("_", " ").title(),
+                    scale=scale,
+                ),
+                alt.value("lightgrey"),
             ),
             tooltip=[
-                alt.Tooltip("properties.community_display:N", title="Community Area"),
-                alt.Tooltip("Property Type:N", title="Property Type"),
+                alt.Tooltip("area_display:N", title="Community Area"),
+                alt.Tooltip("ptype_key:N", title="Property Type"),
                 alt.Tooltip("compliant:Q", title="Compliant"),
                 alt.Tooltip("non_compliant:Q", title="Non-Compliant"),
-                alt.Tooltip("total:Q", title="Total"),
+                alt.Tooltip("denom:Q", title="Compliant + Non-Compliant"),
                 alt.Tooltip(
                     "non_compliance_rate:Q", title="Non-Compliance Rate", format=".1%"
                 ),
             ],
         )
-        .properties(width=width, height=height, title=title)
     )
 
-    return chart, area_type
-
-
-def choropleth_with_composition_tooltip(
-    energy_data: pd.DataFrame,
-    energy_reported: pd.DataFrame,
-    chi_geo: dict,
-    year: int,
-    year_col: str = "Data Year",
-    id_col: str = "ID",
-    area_col: str = "Community Area",
-    property_col: str = "Primary Property Type",
-    geo_area_name_key: str = "properties.community",
-    scheme: str = "blues",
-    domain: tuple[float, float] | None = (0, 1),
-    top_k: int = 6,
-    width: int = 650,
-    height: int = 550,
-) -> tuple[alt.Chart, pd.DataFrame]:
-    """Create a Chicago community-area choropleth showing building non-compliance, with a tooltip displaying the composition of top property types.
-
-    The denominator is the set of unique buildings present in `energy_data`
-    for the specified year. Compliance is defined by presence in
-    `energy_reported` for the same year.
-
-    The map color encodes the selected non-compliance metric, while the tooltip
-    provides a breakdown of building counts by the top N property types within
-    each community area.
-
-    Returns:
-    -------
-    tuple[alt.Chart, pd.DataFrame]
-        The Altair choropleth and the aggregated area-level table used to
-        generate the visualization.
-    """
-
-    def norm_area(x: str | None) -> str | None:
-        return pd.NA if pd.isna(x) else str(x).strip().upper()
-
-    base = energy_data.loc[
-        energy_data[year_col] == year, [id_col, area_col, property_col]
-    ].copy()
-
-    comp = energy_reported.loc[energy_reported[year_col] == year, [id_col]].copy()
-
-    base["_id"] = pd.to_numeric(base[id_col], errors="coerce")
-    comp["_id"] = pd.to_numeric(comp[id_col], errors="coerce")
-
-    base = base.dropna(subset=["_id"])
-    comp = comp.dropna(subset=["_id"])
-
-    base["_id"] = base["_id"].astype(int)
-    comp["_id"] = comp["_id"].astype(int)
-
-    base["_area"] = base[area_col].apply(norm_area)
-    base["_ptype"] = base[property_col].fillna("UNKNOWN")
-
-    compliant_ids = set(comp["_id"].unique())
-
-    base = base.drop_duplicates(subset=["_id", "_area", "_ptype"])
-    base["is_compliant"] = base["_id"].isin(compliant_ids)
-
-    area_totals = (
-        base.groupby("_area")["is_compliant"]
-        .agg(compliant="sum", total="size")
-        .reset_index()
-        .rename(columns={"_area": "Community Area"})
-    )
-    area_totals["non_compliant"] = area_totals["total"] - area_totals["compliant"]
-    area_totals["non_compliance_rate"] = area_totals["non_compliant"] / area_totals[
-        "total"
-    ].replace(0, pd.NA)
-
-    comp_counts = (
-        base.groupby(["_area", "_ptype"])["_id"]
-        .nunique()
-        .reset_index(name="n_buildings")
-    )
-    comp_counts["share"] = comp_counts.groupby("_area")["n_buildings"].transform(
-        lambda s: s / s.sum()
-    )
-
-    top_types = (
-        comp_counts.groupby("_ptype")["n_buildings"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(top_k)
-        .index.tolist()
-    )
-
-    comp_counts["_ptype2"] = comp_counts["_ptype"].where(
-        comp_counts["_ptype"].isin(top_types), other="OTHER"
-    )
-
-    comp_counts2 = (
-        comp_counts.groupby(["_area", "_ptype2"])["n_buildings"].sum().reset_index()
-    )
-    comp_counts2["share"] = comp_counts2.groupby("_area")["n_buildings"].transform(
-        lambda s: s / s.sum()
-    )
-
-    shares_wide = (
-        comp_counts2.pivot_table(
-            index="_area",
-            columns="_ptype2",
-            values="share",
-            aggfunc="sum",
-            fill_value=0,
-        )
-        .reset_index()
-        .rename(columns={"_area": "Community Area"})
-    )
-
-    area = area_totals.merge(shares_wide, on="Community Area", how="left").fillna(0)
-
-    share_tooltips = [
-        alt.Tooltip(f"{t}:Q", title=f"{t} share", format=".0%")
-        for t in (top_types + ["OTHER"])
-        if t in area.columns
-    ]
-
-    scale = (
-        alt.Scale(scheme=scheme, domain=list(domain))
-        if domain
-        else alt.Scale(scheme=scheme)
-    )
-
-    chart = (
-        alt.Chart(alt.Data(values=chi_geo["features"]))
-        .mark_geoshape(stroke="white", strokeWidth=0.5)
-        .project(type="mercator")
-        .transform_lookup(
-            lookup=geo_area_name_key,
-            from_=alt.LookupData(
-                area,
-                key="Community Area",
-                fields=["compliant", "non_compliant", "total", "non_compliance_rate"]
-                + [c for c in area.columns if c in top_types + ["OTHER"]],
-            ),
-        )
-        .encode(
-            color=alt.Color(
-                "non_compliance_rate:Q",
-                title="Non-Compliance Rate",
-                scale=scale,
-            ),
-            tooltip=[
-                alt.Tooltip("properties.community_display:N", title="Community Area"),
-                alt.Tooltip("total:Q", title="Total"),
-                alt.Tooltip(
-                    "non_compliance_rate:Q", title="Non-Compliance Rate", format=".1%"
-                ),
-                *share_tooltips,
-            ],
-        )
-        .properties(
-            width=width,
-            height=height,
-            title=f"Non-Compliance Rate + Property-Type Composition ({year})",
-        )
-    )
-
-    return chart, area
+    return (base + overlay).properties(title=title)
 
 
 if __name__ == "__main__":

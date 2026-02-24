@@ -1974,3 +1974,145 @@ def plotting_FE_star_coef(formula_list: list) -> plt.Figure:
     plt.tight_layout(rect=[0, 0, 0.85, 1])
 
     return fig
+
+
+def plot_compliance_rate_over_time(
+    df: pd.DataFrame,
+    year_col: str,
+    group_col: str,
+    value_col: str,
+    y_title: str,
+) -> alt.Chart:
+    """Plot a time series of a compliance metric, optionally split by group.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Aggregated dataframe with one row per (year, group) containing the metric
+        to be plotted.
+    year_col : str
+        Column name containing the year values on the x‑axis (e.g., "Data Year").
+    group_col : str
+        Column name used to distinguish series (e.g., property type, time built).
+    value_col : str
+        Column name of the numeric compliance metric to plot on the y‑axis
+        (e.g., share_submitted, n_non_compliant).
+    y_title : str
+        Human‑readable label for the y‑axis (e.g., "Share submitted").
+
+    Returns:
+    -------
+    alt.Chart
+        Altair line chart showing the compliance metric over time, with one line
+        per group if multiple groups are present, otherwise a single line without
+        a legend.
+    """
+    if df.empty:
+        return alt.Chart(pd.DataFrame({year_col: [], value_col: []})).mark_line()
+
+    base = alt.Chart(df).encode(
+        x=alt.X(f"{year_col}:O", title="Data Year"),
+        y=alt.Y(f"{value_col}:Q", title=y_title),
+        tooltip=[
+            alt.Tooltip(f"{year_col}:O", title="Year"),
+            alt.Tooltip(f"{group_col}:N", title=group_col),
+            alt.Tooltip(f"{value_col}:Q", title=y_title, format=".2f"),
+        ],
+    )
+
+    # If only one group, no color legend
+    unique_groups = set(df[group_col].dropna().head(2))
+    if len(unique_groups) <= 1:
+        chart = base.mark_line(point=True, strokeWidth=2, color="#1f77b4")
+    else:
+        chart = base.encode(
+            color=alt.Color(f"{group_col}:N", title=group_col),
+        ).mark_line(point=True, strokeWidth=2)
+
+    return chart.properties(height=400)
+
+
+def plot_compliance_status_facets(
+    df: pd.DataFrame,
+    year_col: str,
+    group_col: str,
+    n_submitted_col: str,
+    n_exempt_col: str,
+    n_not_submitted_col: str,
+) -> alt.Chart:
+    """Faceted stacked bar chart of counts by reporting status.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Aggregated dataframe with one row per (year, group), containing counts of
+        buildings by reporting status.
+    year_col : str
+        Column name holding the year values used for faceting (e.g., "Data Year").
+    group_col : str
+        Column name used on the x‑axis to group buildings (e.g., property type,
+        community area).
+    n_submitted_col : str
+        Column name in `df` with the count of submitted buildings for each
+        (year, group).
+    n_exempt_col : str
+        Column name in `df` with the count of exempt buildings for each
+        (year, group).
+    n_not_submitted_col : str
+        Column name in `df` with the count of non‑submitted buildings for each
+        (year, group).
+
+    Returns:
+    -------
+    alt.Chart
+        Altair faceted stacked bar chart where each facet represents a year,
+        the x‑axis shows `group_col`, and bars are stacked by reporting status
+        ("Submitted", "Exempt", "Not submitted") with counts on the y‑axis.
+    """
+    if df.empty:
+        return alt.Chart(pd.DataFrame({group_col: [], year_col: []})).mark_bar()
+
+    df_long = df.rename(
+        columns={
+            n_submitted_col: "Submitted",
+            n_exempt_col: "Exempt",
+            n_not_submitted_col: "Not submitted",
+        }
+    ).melt(
+        id_vars=[year_col, group_col],
+        value_vars=["Submitted", "Exempt", "Not submitted"],
+        var_name="Status",
+        value_name="Count",
+    )
+
+    base = alt.Chart(df_long).encode(
+        x=alt.X(f"{group_col}:N", title=group_col),
+        y=alt.Y("Count:Q", title="Number of buildings"),
+        color=alt.Color(
+            "Status:N",
+            title="Reporting Status",
+            scale=alt.Scale(
+                domain=["Submitted", "Exempt", "Not submitted"],
+                range=["#1f77b4", "#2ca02c", "#d62728"],
+            ),
+        ),
+        tooltip=[
+            alt.Tooltip(f"{year_col}:O", title="Year"),
+            alt.Tooltip(f"{group_col}:N", title=group_col),
+            alt.Tooltip("Status:N", title="Status"),
+            alt.Tooltip("Count:Q", title="Buildings"),
+        ],
+    )
+
+    chart = (
+        base.mark_bar()
+        .properties(height=250)
+        .facet(
+            column=alt.Column(
+                f"{year_col}:O",
+                title="Data Year",
+            )
+        )
+    )
+
+    return chart

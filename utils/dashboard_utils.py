@@ -11,6 +11,10 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from utils.data_utils import (
+    assign_effective_year_built,
+    categorize_time_built,
+    clean_property_type,
+    clean_year_built,
     concurrent_buildings,
     load_community_geojson,
     load_data,
@@ -359,3 +363,222 @@ def render_dashboard_section(
         style_matplotlib(fig10, ax10)
         fig10.subplots_adjust(top=0.94)
         st.pyplot(fig10)
+
+
+def load_clean_energy_data_for_dashboards(
+    min_year: int | None = None,
+    max_year: int | None = None,
+    restrict_to_concurrent: bool = False,
+    concurrent_start: int = 2016,
+    concurrent_end: int = 2023,
+) -> pd.DataFrame:
+    """Load and apply standard cleaning steps for all dashboard pages.
+
+    Parameters
+    ----------
+    min_year :
+        Minimum Data Year to keep (inclusive). If None, no lower bound filter.
+    max_year :
+        Maximum Data Year to keep (inclusive). If None, no upper bound filter.
+    restrict_to_concurrent :
+        If True, keep only buildings that have data in every year from
+        `concurrent_start` to `concurrent_end`.
+    concurrent_start, concurrent_end :
+        Range of years to enforce when `restrict_to_concurrent` is True.
+
+    Returns:
+    -------
+    pd.DataFrame
+        Cleaned energy benchmarking dataframe with:
+        - consistent `Primary Property Type`
+        - `Time Built`
+        - effective year built
+        - (optionally) restricted by year and concurrency.
+    """
+    energy_df = load_data()
+    energy_df = clean_year_built(energy_df)
+    energy_df = assign_effective_year_built(energy_df)
+    energy_df = clean_property_type(energy_df)
+    energy_df = categorize_time_built(energy_df)
+
+    if restrict_to_concurrent:
+        energy_df = concurrent_buildings(
+            energy_df, start_year=concurrent_start, end_year=concurrent_end
+        )
+
+    if min_year is not None:
+        energy_df = energy_df[energy_df["Data Year"] >= min_year]
+    if max_year is not None:
+        energy_df = energy_df[energy_df["Data Year"] <= max_year]
+
+    return energy_df
+
+
+def filter_energy_by_selections(
+    energy_df: pd.DataFrame,
+    sel_time_built: list[str],
+    sel_ppt: list[str],
+    sel_ca: list[str],
+    sel_tlpt: list[str] | None = None,
+) -> pd.DataFrame:
+    """Filter the energy dataframe by standard selection lists.
+
+    Parameters
+    ----------
+    energy_df :
+        Input dataframe to filter.
+    sel_time_built :
+        Selected Time Built categories.
+    sel_ppt :
+        Selected Primary Property Type values.
+    sel_ca :
+        Selected Community Area values.
+    sel_tlpt :
+        Selected Top Level Property Type values, or None to skip this filter.
+
+    Returns:
+    -------
+    pd.DataFrame
+        Filtered dataframe respecting all non‑None selections.
+    """
+    mask = (
+        energy_df["Time Built"].isin(sel_time_built)
+        & energy_df["Primary Property Type"].isin(sel_ppt)
+        & energy_df["Community Area"].isin(sel_ca)
+    )
+    if sel_tlpt is not None:
+        mask &= energy_df["Top Level Property Type"].isin(sel_tlpt)
+
+    return energy_df[mask]
+
+
+def build_standard_filters(
+    energy_df: pd.DataFrame,
+    include_top_level: bool = True,
+    page_prefix: str = "filters",
+) -> tuple[str, list[str], list[str], list[str], list[str]]:
+    """Create standard classification + multiselect filters in Streamlit."""
+    # Define category options for the classification dropdown
+    category_options = [
+        "Time Built",
+        "Primary Property Type",
+        "Community Area",
+        "Top Level Property Type",
+    ]
+    category_col = st.selectbox(
+        "Select category for Building Classification",
+        options=category_options,
+        index=category_options.index("Time Built"),
+        key=f"{page_prefix}_category_select",
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        time_built_opts = sorted(energy_df["Time Built"].dropna().unique().tolist())
+        sel_time_built = st.multiselect(
+            "Time Built",
+            options=time_built_opts,
+            default=time_built_opts,
+            key=f"{page_prefix}_time_built",
+        )
+
+    with col2:
+        ppt_opts = sorted(energy_df["Primary Property Type"].dropna().unique().tolist())
+        sel_ppt = st.multiselect(
+            "Primary Property Type",
+            options=ppt_opts,
+            default=ppt_opts,
+            key=f"{page_prefix}_ppt",
+        )
+
+    if include_top_level:
+        with col3:
+            tlpt_opts = sorted(
+                energy_df["Top Level Property Type"].dropna().unique().tolist()
+            )
+            sel_tlpt = st.multiselect(
+                "Top Level Property Type",
+                options=tlpt_opts,
+                default=tlpt_opts,
+                key=f"{page_prefix}_tlpt",
+            )
+    else:
+        sel_tlpt = []
+
+    with col4:
+        ca_opts = sorted(energy_df["Community Area"].dropna().unique().tolist())
+        sel_ca = st.multiselect(
+            "Community Area",
+            options=ca_opts,
+            default=ca_opts,
+            key=f"{page_prefix}_community_area",
+        )
+
+    return category_col, sel_time_built, sel_ppt, sel_tlpt, sel_ca
+
+
+def aggregate_compliance_over_time(
+    energy_df: pd.DataFrame,
+    category_col: str,
+    year_col: str = "Data Year",
+    id_col: str = "ID",
+) -> pd.DataFrame:
+    """Aggregate compliance counts and shares by year and category."""
+    group_cols = [year_col, category_col]
+
+    agg = (
+        energy_df.groupby(group_cols, dropna=False)
+        .agg(
+            n_buildings=(id_col, "nunique"),
+            n_submitted=("SubmittedFlag", "sum"),
+            n_exempt=("ExemptFlag", "sum"),
+            n_not_submitted=("NotSubmittedFlag", "sum"),
+            n_non_compliant=("NonCompliantFlag", "sum"),
+        )
+        .reset_index()
+    )
+
+    agg["share_submitted"] = agg["n_submitted"] / agg["n_buildings"].where(
+        agg["n_buildings"] > 0
+    )
+    agg["share_non_compliant"] = agg["n_non_compliant"] / agg["n_buildings"].where(
+        agg["n_buildings"] > 0
+    )
+
+    return agg
+
+
+def choose_compliance_metric() -> tuple[str, str]:
+    """Streamlit widget to choose compliance metric and return (value_col, y_title)."""
+    metric_option = st.selectbox(
+        "Compliance metric",
+        options=[
+            "Share submitted",
+            "Share non‑compliant",
+            "Number submitted",
+            "Number non‑compliant",
+        ],
+        index=0,
+    )
+
+    if metric_option == "Share submitted":
+        return "share_submitted", "Share submitted"
+    if metric_option == "Share non‑compliant":
+        return "share_non_compliant", "Share non‑compliant"
+    if metric_option == "Number submitted":
+        return "n_submitted", "Submitted buildings"
+    return "n_non_compliant", "Non‑compliant buildings"
+
+
+def apply_category_filter(
+    agg: pd.DataFrame,
+    category_col: str,
+) -> tuple[pd.DataFrame, str]:
+    """Streamlit selector for a single category value or 'All'."""
+    class_opts = sorted(agg[category_col].dropna().unique().tolist())
+    selected_class = st.selectbox(f"{category_col} filter", ["All"] + class_opts)
+
+    if selected_class != "All":
+        return agg[agg[category_col] == selected_class], selected_class
+    return agg, "All"

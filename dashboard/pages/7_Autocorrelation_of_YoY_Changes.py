@@ -2,28 +2,33 @@
 
 import streamlit as st
 
+from utils.dashboard_utils import (
+    apply_category_filter,
+    apply_page_config,
+    build_standard_filters,
+    filter_energy_by_selections,
+    load_clean_energy_data_for_dashboards,
+)
 from utils.data_utils import (
-    assign_effective_year_built,
-    categorize_time_built,
-    clean_property_type,
-    concurrent_buildings,
-    load_data,
+    add_top_level_property_type,
     prepare_persistence,
 )
 from utils.plot_utils import plot_energy_persistence_rows
 
+"""Streamlit page for analyzing autocorrelation of year-over-year energy changes."""
+apply_page_config()
 st.title("Autocorrelation of Year-over-Year Changes in Energy Use")
 st.markdown("""
 When analyzing trends over time, examining the relationship between past and future at the building level (autocorrelation) can provide insight into what is driving aggregate changes over time. Specifically, this analysis examines the lag-1 first-difference autocorrelation: if a building saw an increase in energy use last year, is it more or less likely to show an increase this year—or vice versa?
 
-Each chart below shows the relationship between the year-over-year change in energy use (Δ) of a building in a given year (e.g. 2016) and in the following year (e.g. 2017). Use the dropdowns to group or filter  by year built, property type, and community area.
+Each chart below shows the relationship between the year-over-year change in energy use (Δ) of a building in a given year (e.g. 2016) and in the following year (e.g. 2017). Use the dropdowns to group or filter by year built, property type, and community area.
 """)
 
-energy_df = load_data()
-energy_df = assign_effective_year_built(energy_df)
-energy_df = concurrent_buildings(energy_df, 2016, 2023)
-energy_df = clean_property_type(energy_df)
-energy_df = categorize_time_built(energy_df)
+# Load and clean data using standard dashboard utilities
+energy_df = load_clean_energy_data_for_dashboards(
+    restrict_to_concurrent=True, concurrent_start=2016, concurrent_end=2023
+)
+energy_df = add_top_level_property_type(energy_df)
 
 variables = [
     "ENERGY STAR Score",
@@ -40,49 +45,28 @@ variables = [
     "GHG Intensity (kg CO2e/sq ft)",
 ]
 
-# This is the *facet* dimension (which chart grouping to show)
-category_options = ["Time Built", "Primary Property Type", "Community Area"]
-category_col = st.selectbox(
-    "Select category for Building Classification",
-    options=category_options,
-    index=category_options.index("Time Built"),
+# Standard filters using dashboard_utils (with Top Level Property Type)
+category_col, sel_time_built, sel_ppt, sel_tlpt, sel_ca = build_standard_filters(
+    energy_df,
+    include_top_level=True,  # Include Top Level Property Type
+    page_prefix="persistence",
 )
 
 site_eui_col = st.selectbox(
     "Select column for Energy Metric",
     options=variables,
     index=variables.index("Site EUI (kBtu/sq ft)"),
+    key="persistence_metric",
 )
 
-# Build lagged dataset
-df_lagged = prepare_persistence(
+# Apply standard filters
+energy_df_filtered = filter_energy_by_selections(
     energy_df,
-    decade_built_col=category_col,  # just used as grouping key inside your function
-    site_eui_col=site_eui_col,
+    sel_time_built=sel_time_built,
+    sel_ppt=sel_ppt,
+    sel_ca=sel_ca,
+    sel_tlpt=sel_tlpt,
 )
-
-# --- Global filters (always visible) ---
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    time_built_opts = sorted(energy_df["Time Built"].dropna().unique().tolist())
-    sel_time_built = st.multiselect(
-        "Time Built", time_built_opts, default=time_built_opts
-    )
-
-with col2:
-    ppt_opts = sorted(energy_df["Primary Property Type"].dropna().unique().tolist())
-    sel_ppt = st.multiselect("Primary Property Type", ppt_opts, default=ppt_opts)
-
-with col3:
-    ca_opts = sorted(energy_df["Community Area"].dropna().unique().tolist())
-    sel_ca = st.multiselect("Community Area", ca_opts, default=ca_opts)
-
-energy_df_filtered = energy_df[
-    energy_df["Time Built"].isin(sel_time_built)
-    & energy_df["Primary Property Type"].isin(sel_ppt)
-    & energy_df["Community Area"].isin(sel_ca)
-]
 
 if energy_df_filtered.empty:
     st.warning(
@@ -90,29 +74,33 @@ if energy_df_filtered.empty:
     )
     st.stop()
 
-three = 3
-if energy_df_filtered["Data Year"].nunique() < three:
+min_years = 3
+if energy_df_filtered["Data Year"].nunique() < min_years:
     st.warning(
         "Not enough years of data for the selected filters to compute year‑to‑year changes."
     )
     st.stop()
 
+# Build lagged dataset
 df_lagged = prepare_persistence(
     energy_df_filtered,
     decade_built_col=category_col,
     site_eui_col=site_eui_col,
 )
 
-class_opts = sorted(df_lagged[category_col].dropna().unique().tolist())
-selected_class = st.selectbox(f"{category_col} filter", ["All"] + class_opts)
+# Category filter (All or single category)
+df_lagged_filtered, selected_class_name = apply_category_filter(df_lagged, category_col)
 
-if selected_class != "All":
-    df_lagged_plot = df_lagged[df_lagged[category_col] == selected_class]
-else:
-    df_lagged_plot = df_lagged
+# Add subtitle showing current selections
+st.markdown(
+    f"**Showing: {selected_class_name}**"
+    if selected_class_name != "All"
+    else "**Showing: All categories**"
+)
 
+# Generate and display charts
 rows = plot_energy_persistence_rows(
-    df_lagged=df_lagged_plot,
+    df_lagged=df_lagged_filtered,
     property_col=category_col,
     id_col="ID",
     year_col="Data Year",

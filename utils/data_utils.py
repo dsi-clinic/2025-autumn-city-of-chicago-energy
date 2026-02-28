@@ -855,15 +855,7 @@ def clean_year_built(
     year_col: str = "Data Year",
     year_built_col: str = "Year Built",
 ) -> pd.DataFrame:
-    """Clean 'Year Built' for each building (ID), sorted by Data Year ascending.
-
-    Rules:
-    - Maintain a 'current' Year Built value as we move forward in time.
-    - If a row has Year Built == Data Year (rebuild year), set current = Data Year.
-    - If a row has a non-null Year Built != Data Year and current is still null,
-      use that as the initial current value.
-    - For every row, if current is not null, set Year Built = current.
-    """
+    """Clean 'Year Built' for each building (ID), sorted by Data Year ascending."""
     cleaned_df = energy_df.copy()
     cleaned_df[year_built_col] = pd.to_numeric(
         cleaned_df[year_built_col], errors="coerce"
@@ -871,29 +863,41 @@ def clean_year_built(
     cleaned_df[year_col] = pd.to_numeric(cleaned_df[year_col], errors="coerce")
 
     def fix_building(group: pd.DataFrame) -> pd.DataFrame:
-        group = group.sort_values(year_col).copy()
+        group = group.sort_values(year_col).reset_index(drop=True).copy()
         current: float | None = None
-        cleaned_values: list[float | None] = []
+        cleaned_values: list[float | None] = [None] * len(group)
 
-        for _, row in group.iterrows():
+        # Forward pass: establish current year built
+        for i, (_, row) in enumerate(group.iterrows()):
             year = row[year_col]
             year_built = row[year_built_col]
 
-            if pd.notna(year_built) and pd.notna(year) and year_built == year:
-                # rebuild in this year: from now on use this year
-                current = year_built
-            elif current is None and pd.notna(year_built):
-                # first known value before any rebuild year
-                current = year_built
+            if pd.notna(year_built) and pd.notna(year):
+                if year_built == year:
+                    # Rebuild year: update current
+                    current = year_built
+                elif current is None:
+                    # First known value: establish current
+                    current = year_built
 
-            cleaned_values.append(current if current is not None else year_built)
+            # Store forward-propagated value
+            if current is not None:
+                cleaned_values[i] = current
+
+        # Backward pass: backfill current to earlier rows
+        for i in range(len(group) - 1, -1, -1):
+            if cleaned_values[i] is None and current is not None:
+                cleaned_values[i] = current
 
         group[year_built_col] = cleaned_values
         return group
 
-    cleaned_df = cleaned_df.groupby(id_col, group_keys=False).apply(fix_building)
+    result = cleaned_df.groupby(id_col, group_keys=False).apply(
+        fix_building, include_groups=False
+    )
 
-    return cleaned_df
+    # Reconstruct with original columns and preserve ID
+    return result.reset_index(drop=True)
 
 
 # --- compliance analysis ---

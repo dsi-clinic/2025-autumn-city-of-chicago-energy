@@ -2,14 +2,17 @@
 
 import streamlit as st
 
+from utils.dashboard_utils import (
+    aggregate_compliance_over_time,
+    apply_category_filter,
+    build_standard_filters,
+    choose_compliance_metric,
+    filter_energy_by_selections,
+    load_clean_energy_data_for_dashboards,
+)
 from utils.data_utils import (
     add_reporting_compliance_flags,
     add_top_level_property_type,
-    assign_effective_year_built,
-    categorize_time_built,
-    clean_property_type,
-    clean_year_built,
-    load_data,
 )
 from utils.plot_utils import (
     plot_compliance_rate_over_time,
@@ -26,85 +29,37 @@ and see how often buildings report on time versus missing data or appearing only
 intermittently.
 """)
 
-
-# --- Load & prepare data ---
-energy_df = load_data()
-energy_df = clean_year_built(energy_df)
-energy_df = assign_effective_year_built(energy_df)
-energy_df = clean_property_type(energy_df)
-energy_df = categorize_time_built(energy_df)
-energy_df = add_top_level_property_type(energy_df)
-
-restriction_year = 2018
-# Apply standardized compliance logic (2018+)
-energy_df = add_reporting_compliance_flags(energy_df)
-
-# Restrict to 2018+ (already done inside helper, but safe to be explicit)
-energy_df = energy_df[energy_df["Data Year"] >= restriction_year]
-
-
-# Optional: restrict to years where ordinance is active and data is consistent
-min_year, max_year = 2014, 2023
-energy_df = energy_df[
-    (energy_df["Data Year"] >= min_year) & (energy_df["Data Year"] <= max_year)
-]
-
-
-# --- Compliance flag ---
-# Assumes your merge filled Reporting Status = "Not present in data"
-# for covered-but-unreported buildings
-energy_df["Is_Compliant"] = energy_df["Reporting Status"].ne("Not present in data")
-
-
-# --- Filter controls ---
-variables = [
-    "Is_Compliant",
-    "Chicago Energy Rating",
-    "ENERGY STAR Score",
-]
-
-# --- Filter controls ---
-category_options = [
-    "Time Built",
-    "Primary Property Type",
-    "Top Level Property Type",
-    "Community Area",
-]
-category_col = st.selectbox(
-    "Select category for Building Classification",
-    options=category_options,
-    index=category_options.index("Time Built"),
+# --- Load & prepare data (shared helper) ---
+energy_df = load_clean_energy_data_for_dashboards(
+    min_year=2014,
+    max_year=2023,
+    restrict_to_concurrent=False,
 )
 
-# Add Top Level Property Type multiselect alongside Primary Property Type
-col1, col2, col3, col4 = st.columns(4)
+# Add top‑level property types and compliance flags
+energy_df = add_top_level_property_type(energy_df)
+energy_df = add_reporting_compliance_flags(energy_df)
 
-with col1:
-    time_built_opts = sorted(energy_df["Time Built"].dropna().unique().tolist())
-    sel_time_built = st.multiselect(
-        "Time Built", time_built_opts, default=time_built_opts
-    )
+restriction_year = 2018
+energy_df = energy_df[energy_df["Data Year"] >= restriction_year]
 
-with col2:
-    ppt_opts = sorted(energy_df["Primary Property Type"].dropna().unique().tolist())
-    sel_ppt = st.multiselect("Primary Property Type", ppt_opts, default=ppt_opts)
+# Compliance flag relative to merged covered buildings
+energy_df["Is_Compliant"] = energy_df["Reporting Status"].ne("Not present in data")
 
-with col3:
-    tlpt_opts = sorted(energy_df["Top Level Property Type"].dropna().unique().tolist())
-    sel_tlpt = st.multiselect("Top Level Property Type", tlpt_opts, default=tlpt_opts)
+# --- Filter controls ---
+category_col, sel_time_built, sel_ppt, sel_tlpt, sel_ca = build_standard_filters(
+    energy_df,
+    include_top_level=True,
+)
 
-with col4:
-    ca_opts = sorted(energy_df["Community Area"].dropna().unique().tolist())
-    sel_ca = st.multiselect("Community Area", ca_opts, default=ca_opts)
-
-# Update the filtered dataset to include Top Level Property Type
-energy_df_filtered = energy_df[
-    energy_df["Time Built"].isin(sel_time_built)
-    & energy_df["Primary Property Type"].isin(sel_ppt)
-    & energy_df["Top Level Property Type"].isin(sel_tlpt)
-    & energy_df["Community Area"].isin(sel_ca)
-]
-
+# Apply common filter logic
+energy_df_filtered = filter_energy_by_selections(
+    energy_df,
+    sel_time_built=sel_time_built,
+    sel_ppt=sel_ppt,
+    sel_ca=sel_ca,
+    sel_tlpt=sel_tlpt,
+)
 
 if energy_df_filtered.empty:
     st.warning(
@@ -112,74 +67,24 @@ if energy_df_filtered.empty:
     )
     st.stop()
 
-
 min_years = 2
-
 if energy_df_filtered["Data Year"].nunique() < min_years:
     st.warning(
         "Not enough years of data for the selected filters to evaluate compliance trends."
     )
     st.stop()
 
-
-# --- Aggregate compliance over time ---
-# year × category × status
-group_cols = ["Data Year", category_col]
-
-agg = (
-    energy_df.groupby(group_cols, dropna=False)
-    .agg(
-        n_buildings=("ID", "nunique"),
-        n_submitted=("SubmittedFlag", "sum"),
-        n_exempt=("ExemptFlag", "sum"),
-        n_not_submitted=("NotSubmittedFlag", "sum"),
-        n_non_compliant=("NonCompliantFlag", "sum"),
-    )
-    .reset_index()
+# --- Aggregate compliance over time (on filtered data) ---
+agg = aggregate_compliance_over_time(
+    energy_df=energy_df_filtered,
+    category_col=category_col,
 )
-
-agg["share_submitted"] = agg["n_submitted"] / agg["n_buildings"].where(
-    agg["n_buildings"] > 0
-)
-agg["share_non_compliant"] = agg["n_non_compliant"] / agg["n_buildings"].where(
-    agg["n_buildings"] > 0
-)
-
 
 # --- Choose metric to plot ---
-metric_option = st.selectbox(
-    "Compliance metric",
-    options=[
-        "Share submitted",
-        "Share non‑compliant",
-        "Number submitted",
-        "Number non‑compliant",
-    ],
-    index=0,
-)
+value_col, y_title = choose_compliance_metric()
 
-if metric_option == "Share submitted":
-    value_col = "share_submitted"
-    y_title = "Share submitted"
-elif metric_option == "Share non‑compliant":
-    value_col = "share_non_compliant"
-    y_title = "Share non‑compliant"
-elif metric_option == "Number submitted":
-    value_col = "n_submitted"
-    y_title = "Submitted buildings"
-else:
-    value_col = "n_non_compliant"
-    y_title = "Non‑compliant buildings"
-
-
-class_opts = sorted(agg[category_col].dropna().unique().tolist())
-selected_class = st.selectbox(f"{category_col} filter", ["All"] + class_opts)
-
-if selected_class != "All":
-    agg_plot = agg[agg[category_col] == selected_class]
-else:
-    agg_plot = agg
-
+# --- Filter single category vs All ---
+agg_plot, selected_class = apply_category_filter(agg, category_col)
 
 # --- Plot 1: compliance over time (line chart) ---
 st.subheader("Compliance trend over time")
@@ -191,9 +96,7 @@ line_chart = plot_compliance_rate_over_time(
     value_col=value_col,
     y_title=y_title,
 )
-
 st.altair_chart(line_chart, use_container_width=True)
-
 
 # --- Plot 2: faceted compliance distributions by year ---
 st.subheader("Compliance distribution by category and year")
@@ -206,6 +109,4 @@ facet_chart = plot_compliance_status_facets(
     n_exempt_col="n_exempt",
     n_not_submitted_col="n_not_submitted",
 )
-
-
 st.altair_chart(facet_chart, use_container_width=True)

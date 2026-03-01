@@ -109,6 +109,29 @@ def concurrent_buildings(
 ) -> pd.DataFrame:
     """Filter buildings that have submitted data for all years in a specified range.
 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The energy dataset containing at least building ID and year columns.
+    start_year : int, default = 2016
+        The first year in the required range (inclusive).
+    end_year : int, default = 2023
+        The last year in the required range (inclusive).
+    id_col : str, default="ID"
+        The column name that identifies unique buildings.
+    year_col : str, default="Data Year"
+        The column name indicating the year of the data entry.
+    building_type_col : str, default="Primary Property Type"
+        The column name for the building type.
+    building_type : list, default=[]
+        A list of building types to include. If empty, all types are included.
+
+    Returns:
+    -------
+    pd.DataFrame
+        A filtered DataFrame containing only records of buildings that have
+        data submitted for all years in the specified range, restricted to data within that range.
+
     Only records within [start_year, end_year] are kept. For years >= 2018,
     only rows whose reporting status matches one of the `submitted_labels`
     are considered.
@@ -138,8 +161,6 @@ def concurrent_buildings(
         # keep all pre-2018 rows; filter 2018+ to submitted
         mask_submitted = df_in_range[status_col] == submitted_label
         df_in_range = df_in_range[mask_pre_2018 | (mask_2018_plus & mask_submitted)]
-
-    required_years = set(range(start_year, end_year + 1))
 
     required_years = set(range(start_year, end_year + 1))
 
@@ -674,6 +695,10 @@ def load_major_us_cities() -> dict[str, pd.DataFrame]:
     - Top-level CSV files are loaded directly.
     - Boston_data folder is loaded using load_boston_energy_data().
     - Returns: {key: DataFrame}
+    Keys:
+        - For top-level CSV files: the file name stem
+          (e.g., "Seattle_Benchmarking_Performance_Ranges_by_Building_Type").
+        - For the Boston_data folder: "boston_energy_raw".
     """
     path = DATA_DIR / "major_us_cities_data"
 

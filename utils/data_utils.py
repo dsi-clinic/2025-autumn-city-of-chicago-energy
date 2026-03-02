@@ -14,6 +14,8 @@ import pandas as pd
 from utils.settings import DATA_DIR
 
 logger = logging.getLogger(__name__)
+MIN_COMPLIANCE_YEAR = 2018
+MIN_PRIMARY_PROPERTY = 150
 
 logging.basicConfig(
     level=logging.INFO,
@@ -264,21 +266,57 @@ def load_neighborhood_geojson() -> dict:
     return geojson
 
 
+def load_community_geojson() -> dict:
+    """Loads the community area GeoJSON file.
+
+    Returns:
+        A Python dictionary parsed from the GeoJSON file,
+        with an added human-readable community_display field.
+    """
+    path = DATA_DIR / "chicago_geo"
+
+    if not path.exists():
+        path = Path("/project") / "data" / "chicago_geo"
+
+    if not path.exists():
+        raise FileNotFoundError(f"Data directory not found: {path}")
+
+    geojson_path = path / "Community_area_chi.geojson"
+
+    logger.info(f"Loading GeoJSON from: {geojson_path.resolve()}")
+    with geojson_path.open() as f:
+        geojson = json.load(f)
+
+    # ---- Add display-friendly community name ----
+    for feat in geojson.get("features", []):
+        props = feat.get("properties", {})
+        raw = props.get("community")
+
+        if raw is not None and "community_display" not in props:
+            props["community_display"] = " ".join(
+                w.capitalize() for w in str(raw).lower().split()
+            )
+
+        feat["properties"] = props
+
+    logger.info(f"Loaded {len(geojson['features'])} features")
+    return geojson
+
+
 def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
     """Ensure each building (ID) has a consistent Primary Property Type.
 
     Rules:
-    1. If a building has only one valid (non-'nan'/non-empty) type, fill all with that.
-    2. If a building has any combination of 'multifamily housing', 'residential', or 'nan',
-       set all to 'multifamily housing'.
-    3. If a building only has repeated instances of 'multifamily housing', keep that.
-    4. If a building has any combination of 'senior care community' or 'senior living community',
-       set all to 'senior care community'.
+    1. If a building has only one valid type, fill all with that.
+    2. Unify multifamily/residential variants → 'multifamily housing'.
+    3. Unify senior care variants → 'senior care community'.
+    4. Unify mall variants → 'mall'.
+    5. Merge specified types → 'other'.
     """
-    df_copy = energy_df.copy()
-
+    result_df = energy_df.copy()
     missing_vals = {"nan", "none", ""}
 
+    # Your existing merge-to-other set
     merge_to_other = {
         "adult education",
         "other - education",
@@ -301,8 +339,8 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
         "indoor arena",
     }
 
-    # Map each building ID to its valid property types
-    type_map = df_copy.groupby("ID")["Primary Property Type"].apply(
+    # Step 1: Clean values and build per-building mapping (your existing logic)
+    type_map = result_df.groupby("ID")["Primary Property Type"].apply(
         lambda x: [
             re.sub(r"\s+", " ", str(v)).strip().lower()
             for v in x
@@ -311,62 +349,50 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
     )
 
     id_to_type = {}
-
     for bid, types in type_map.items():
         lower_types = {t.strip().lower() for t in types}
 
-        # Case 4: senior care / senior living -> unify as 'senior care community'
+        # Senior care, multifamily, mall, hospital, recreation logic (your existing)
         if lower_types & {"senior care community", "senior living community"}:
             id_to_type[bid] = "senior care community"
-
-        # Case 1: Only one valid type
         elif len(lower_types) == 1:
             id_to_type[bid] = list(lower_types)[0]
-
-        # Case 2: multifamily + residential/nan/duplicates -> multifamily housing
-        elif "multifamily housing" in lower_types and (
-            "residential" in lower_types or "nan" in lower_types or "" in lower_types
-        ):
+        elif "multifamily housing" in lower_types:
             id_to_type[bid] = "multifamily housing"
-
-        # Case 3: redundant duplicates like ['multifamily housing', 'multifamily housing']
-        elif lower_types & {"multifamily housing"}:
-            id_to_type[bid] = "multifamily housing"
-
-        # Case 5: mall types -> unify as 'mall'
-        if lower_types & {"enclosed mall", "strip mall", "other - mall"}:
+        elif lower_types & {"enclosed mall", "strip mall", "other - mall"}:
             id_to_type[bid] = "mall"
-
-        # Case 6: residential types -> unify as 'residential'
-        if lower_types & {"residential", "other - lodging/residential"}:
-            id_to_type[bid] = "residential"
-
-        # Case 7: hospital types -> unify as 'hospital'
-        if lower_types & {
+        elif lower_types & {
             "hospital (general medical & surgical)",
             "other - specialty hospital",
         }:
             id_to_type[bid] = "hospital"
-
-        # Case 8: other - recreation -> recreation
-        if lower_types & {"other - recreation"}:
+        elif "other - recreation" in lower_types:
             id_to_type[bid] = "recreation"
-
-        if lower_types & merge_to_other:
+        elif lower_types & set(merge_to_other):
             id_to_type[bid] = "other"
+        else:
+            id_to_type[bid] = list(lower_types)[0] if lower_types else "other"
 
-    # Apply replacements
+    # Step 2: Apply cleaned Primary Property Type (your existing logic)
     def replace_type(row: pd.Series) -> str:
         val = str(row["Primary Property Type"]).strip().lower()
         if val in missing_vals or pd.isna(row["Primary Property Type"]):
-            return id_to_type.get(row["ID"], row["Primary Property Type"])
-        if row["ID"] in id_to_type:
-            return id_to_type[row["ID"]]
-        return row["Primary Property Type"]
+            return id_to_type.get(row["ID"], pd.NA)
+        return id_to_type.get(row["ID"], row["Primary Property Type"])
 
-    df_copy["Primary Property Type"] = df_copy.apply(replace_type, axis=1)
+    result_df["Primary Property Type"] = result_df.apply(replace_type, axis=1)
 
-    return df_copy
+    # Step 3: NEW - Merge rare types (<150 instances) to "other"
+    type_counts = result_df["Primary Property Type"].value_counts()
+    rare_types = type_counts[type_counts < MIN_PRIMARY_PROPERTY].index.tolist()
+
+    print(f"📊 Merging {len(rare_types)} rare types (<150) to 'other': {rare_types}")
+
+    result_df["Primary Property Type"] = result_df["Primary Property Type"].replace(
+        dict.fromkeys(rare_types, "other")
+    )
+
+    return result_df
 
 
 def covid_impact_category(

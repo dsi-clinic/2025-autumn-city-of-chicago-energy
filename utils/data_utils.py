@@ -917,21 +917,94 @@ def sf_to_chicago(sf_df: pd.DataFrame) -> pd.DataFrame:
     elec_kwh = _to_num(sf_df.get("Electricity Use - Grid Purchase (kWh)"))
     out["Electricity Use (kBtu)"] = elec_kwh * KWH_TO_KBTU
 
-    out["Natural Gas Use (kBtu)"] = _to_num(sf_df.get("Natural Gas Use (kBtu)"))
-    out["District Steam Use (kBtu)"] = _to_num(sf_df.get("District Steam Use (kBtu)"))
+def covered_assign_top_types(
+    covered_df: pd.DataFrame,
+    source_col: str = "Cohort - Sector",
+    target_col: str = "Top Level Property Type",
+    other_label: str = "Other",
+    title_case: bool = True,
+) -> pd.DataFrame:
+    """Create a standardized Top Level Property Type column for covered buildings.
 
-    out["District Chilled Water Use (kBtu)"] = pd.NA
-    out["All Other Fuel Use (kBtu)"] = pd.NA
+    Parameters
+    ----------
+    covered_df : pd.DataFrame
+        Covered buildings dataset.
+    source_col : str
+        Column containing sector/category information
+        (default: "Cohort - Sector").
+    target_col : str
+        Name of the output column to create
+        (default: "Top Level Property Type").
+    other_label : str
+        Label used for missing values.
+    title_case : bool
+        Whether to convert values to Title Case.
 
-    # EUI: ft2 == sq ft
-    out["Site EUI (kBtu/sq ft)"] = _to_num(sf_df.get("Site EUI (kBtu/ft2)"))
-    out["Source EUI (kBtu/sq ft)"] = _to_num(sf_df.get("Source EUI (kBtu/ft2)"))
-    out["Weather Normalized Site EUI (kBtu/sq ft)"] = _to_num(
-        sf_df.get("Weather Normalized Site EUI (kBtu/ft2)")
+    Returns:
+    -------
+    pd.DataFrame
+        Copy of covered_df with cleaned Top Level Property Type column added.
+    """
+    data = covered_df.copy()
+
+    if source_col not in data.columns:
+        raise KeyError(f"{source_col} not found in covered_df.")
+
+    data[target_col] = data[source_col].fillna(other_label).astype(str).str.strip()
+
+    if title_case:
+        data[target_col] = data[target_col].str.title()
+
+    data[target_col] = data[target_col].replace("", other_label)
+
+    return data
+
+
+def clean_year_built(
+    energy_df: pd.DataFrame,
+    id_col: str = "ID",
+    year_col: str = "Data Year",
+    year_built_col: str = "Year Built",
+) -> pd.DataFrame:
+    """Clean 'Year Built' for each building (ID), sorted by Data Year ascending."""
+    cleaned_df = energy_df.copy()
+    cleaned_df[year_built_col] = pd.to_numeric(
+        cleaned_df[year_built_col], errors="coerce"
     )
-    out["Weather Normalized Source EUI (kBtu/sq ft)"] = _to_num(
-        sf_df.get("Weather Normalized Source EUI (kBtu/ft2)")
-    )
+    cleaned_df[year_col] = pd.to_numeric(cleaned_df[year_col], errors="coerce")
+
+    def fix_building(group: pd.DataFrame) -> pd.DataFrame:
+        group = group.sort_values(year_col).reset_index(drop=True).copy()
+        current: float | None = None
+        cleaned_values: list[float | None] = [None] * len(group)
+
+        # Forward pass: establish current year built
+        for i, (_, row) in enumerate(group.iterrows()):
+            year = row[year_col]
+            year_built = row[year_built_col]
+
+            if pd.notna(year_built) and pd.notna(year):
+                if year_built == year:
+                    # Rebuild year: update current
+                    current = year_built
+                elif current is None:
+                    # First known value: establish current
+                    current = year_built
+
+            # Store forward-propagated value
+            if current is not None:
+                cleaned_values[i] = current
+
+        # Backward pass: backfill current to earlier rows
+        for i in range(len(group) - 1, -1, -1):
+            if cleaned_values[i] is None and current is not None:
+                cleaned_values[i] = current
+
+        group[year_built_col] = cleaned_values
+        return group
+
+    result = cleaned_df.groupby(id_col, group_keys=False).apply(fix_building)
 
     out["Total GHG Emissions (Metric Tons CO2e)"] = _to_num(
         sf_df.get("Total GHG Emissions (Metric Tons CO2e)")
@@ -1044,109 +1117,254 @@ def seattle_to_chicago(seattle_df: pd.DataFrame) -> pd.DataFrame:
     out["Chicago Energy Rating"] = pd.NA
     out["Exempt From Chicago Energy Rating"] = seattle_df.get("ComplianceIssue")
 
-    out["Water Use (kGal)"] = pd.NA
-    out["Row_ID"] = pd.NA
+    # NEW: force "not present in data" -> non-compliant
+    data.loc[
+        data[reporting_status_col].eq("not present in data"),
+        output_col,
+    ] = "non-compliant"
+
+    return data
 
     for c in CHICAGO_COLS:
         if c not in out.columns:
             out[c] = pd.NA
 
-    return out[CHICAGO_COLS].copy()
+def build_compliance_base(
+    energy_data: pd.DataFrame,
+    year: int,
+    year_col: str = "Data Year",
+    id_col: str = "ID",
+    area_col: str = "Community Area",
+    status_col: str = "compliance_status",
+    property_type_col: str = "Primary Property Type",
+    top_level_col: str = "Top Level Property Type",
+    time_built_col: str = "Time Built",
+    keep_cols: list[str] | None = None,
+) -> pd.DataFrame:
+    """Build a year-specific compliance base table.
+
+    Filters the merged covered × benchmarking dataset to a single year and
+    returns a simplified dataframe containing:
+
+    - Building ID
+    - Community area keys (area_key, area_display)
+    - Classification columns (Primary Property Type, Top Level Property Type, Time Built)
+    - Compliance status
+
+    This base table is used to construct community-area summary tables for maps.
+
+    Parameters
+    ----------
+    energy_data : pd.DataFrame
+        Merged dataset containing compliance_status and classification fields.
+    year : int
+        Target reporting year.
+    area_col : str
+        Community area column.
+    status_col : str
+        Compliance status column.
+
+    Returns:
+    -------
+    pd.DataFrame
+        Filtered base dataframe for the specified year.
+    """
 
 
-MAJOR_US_CITIES_DIR: Final[Path] = Path("data") / "major_us_cities_data"
+    if keep_cols is None:
+        keep_cols = [property_type_col, top_level_col, time_built_col]
+    keep_cols = [c for c in keep_cols if c in energy_data.columns]
 
+    cols = [id_col, area_col, status_col] + keep_cols
+    cols = list(dict.fromkeys(cols))
 
-def _infer_year_from_name(filename: str) -> int | None:
-    match = re.search(r"(19|20)\d{2}", filename)
-    if match is None:
-        return None
-    return int(match.group(0))
+    base = energy_data.loc[energy_data[year_col] == year, cols].copy()
 
+    base["_id"] = pd.to_numeric(base[id_col], errors="coerce")
+    base["area_key"] = base[area_col].apply(norm_upper)
+    base["area_display"] = base[area_col].astype("string").str.strip().str.title()
+    base[status_col] = base[status_col].astype("string").str.strip().str.lower()
 
-def _unnamed_share(columns: pd.Index) -> float:
-    cols = columns.astype(str)
-    if len(cols) == 0:
-        return 1.0
-    n_unnamed = cols.str.match(r"^Unnamed").sum()
-    return n_unnamed / len(cols)
+    # Clean grouping cols safely
+    for c in keep_cols:
+        base[c] = base[c].astype("string").str.strip()
+        base[c] = base[c].where(base[c].notna(), pd.NA)
 
+    if top_level_col in base.columns:
+        base[top_level_col] = base[top_level_col].fillna("Other")
+        base[top_level_col] = base[top_level_col].replace(
+            {"nan": "Other", "NaN": "Other"}
+        )
 
-def _read_boston_excel(path: Path) -> pd.DataFrame:
-    candidates: list[pd.DataFrame] = []
-    for header in (0, 1, 2, 3, 4, 5):
-        dff = pd.read_excel(path, engine="openpyxl", header=header)
-        dff.columns = [str(c).strip() for c in dff.columns]
-        dff = dff.dropna(how="all")
+    base = base.dropna(subset=["_id", "area_key", status_col]).copy()
+    base["_id"] = base["_id"].astype(int)
+
+    dedup_cols = ["_id", "area_key"] + keep_cols
+    base = base.drop_duplicates(subset=dedup_cols).copy()
+
+    base = base.rename(columns={"_id": "Building ID"})
+    out_cols = ["Building ID", "area_key", "area_display"] + keep_cols + [status_col]
+    return base[out_cols]
 
         candidates.append(dff)
 
-    # Choose the version with the lowest share of Unnamed columns
-    best = min(candidates, key=lambda d: _unnamed_share(pd.Index(d.columns)))
-    return best
+def build_area_table_overall(
+    base: pd.DataFrame,
+    status_col: str = "compliance_status",
+) -> pd.DataFrame:
+    """Aggregate compliance statistics at the community-area level.
 
+    Computes total counts and compliance shares for each community area
+    from the year-specific base dataframe.
 
-def _read_boston_file(path: Path) -> pd.DataFrame:
-    suffix = path.suffix.lower()
+    Parameters
+    ----------
+    base : pd.DataFrame
+        Year-filtered compliance base table produced by `build_compliance_base`.
+    status_col : str
+        Column indicating compliance status.
 
-    if suffix == ".csv":
-        try:
-            dff = pd.read_csv(path, low_memory=False)
-        except UnicodeDecodeError:
-            dff = pd.read_csv(path, low_memory=False, encoding="latin-1")
+    Returns:
+    -------
+    pd.DataFrame
+        Community-area summary table including:
+        - area_key, area_display
+        - num_submitted, num_non_compliant, denom
+        - share_submitted, share_non_compliant
+    """
+    data = base.copy()
+    data[status_col] = data[status_col].astype(str).str.strip().str.lower()
 
-        dff.columns = [str(c).strip() for c in dff.columns]
-        dff = dff.loc[:, ~pd.Index(dff.columns).astype(str).str.match(r"^Unnamed")]
-        dff = dff.dropna(axis=1, how="all").dropna(how="all")
-        return dff
+    counts = (
+        data.groupby(["area_key", "area_display", status_col], as_index=False)
+        .size()
+        .pivot_table(
+            index=["area_key", "area_display"],
+            columns=status_col,
+            values="size",
+            fill_value=0,
+            aggfunc="sum",
+        )
+        .reset_index()
+    )
 
-    if suffix in {".xlsx", ".xls"}:
-        boston_df = _read_boston_excel(path)
-        boston_df = boston_df.loc[
-            :,
-            ~pd.Index(boston_df.columns).astype(str).str.match(r"^Unnamed"),
+    for col in ["compliant", "non-compliant", "exempt"]:
+        if col not in counts.columns:
+            counts[col] = 0
+
+    counts = counts.rename(
+        columns={
+            "compliant": "num_submitted",
+            "non-compliant": "num_non_compliant",
+        }
+    )
+
+    counts["denom"] = counts["num_submitted"] + counts["num_non_compliant"]
+    counts["share_submitted"] = counts["num_submitted"] / counts["denom"].replace(
+        0, pd.NA
+    )
+    counts["share_non_compliant"] = counts["num_non_compliant"] / counts[
+        "denom"
+    ].replace(0, pd.NA)
+
+    return counts[
+        [
+            "area_key",
+            "area_display",
+            "num_submitted",
+            "num_non_compliant",
+            "exempt",
+            "denom",
+            "share_submitted",
+            "share_non_compliant",
         ]
         boston_df = boston_df.dropna(axis=1, how="all").dropna(how="all")
         return boston_df
 
     raise ValueError(f"Unsupported file type: {path.suffix}")
 
-
-def load_boston_energy_data(
-    folder: str | Path | None = None,
-    *,
-    recursive: bool = False,
-    city_name: str = "Boston",
-    year_col: str = "Data Year",
+def build_area_table_by_property(
+    base: pd.DataFrame,
+    ptype_col: str,
+    status_col: str = "compliance_status",
 ) -> pd.DataFrame:
-    """Load Boston energy benchmarking data from a folder.
+    """Compute submitted/non-compliant counts + shares by area and a classification column."""
+    data = base.copy()
 
-    Loads multiple CSV/XLSX files and returns a single concatenated DataFrame.
+    if ptype_col not in data.columns:
+        raise KeyError(
+            f"ptype_col='{ptype_col}' not found in base columns: {list(data.columns)}"
+        )
 
-    Adds:
-      - City
-      - source_file
-      - Data Year (inferred from filename if missing)
-    """
-    if folder is None:
-        folder_path = MAJOR_US_CITIES_DIR / "Boston_data"
-    else:
-        folder_path = Path(folder)
+    data[status_col] = data[status_col].astype(str).str.strip().str.lower()
+    data = data[data[status_col].isin(["compliant", "non-compliant"])].copy()
+
+    data[ptype_col] = data[ptype_col].where(data[ptype_col].notna(), pd.NA)
+    data[ptype_col] = data[ptype_col].astype("string").str.strip()
+
+    area_type = (
+        data.groupby(
+            ["area_key", "area_display", ptype_col, status_col], as_index=False
+        )
+        .size()
+        .pivot_table(
+            index=["area_key", "area_display", ptype_col],
+            columns=status_col,
+            values="size",
+            fill_value=0,
+            aggfunc="sum",
+        )
+        .reset_index()
+    )
 
     if not folder_path.exists():
         raise FileNotFoundError(f"Boston folder not found: {folder_path.resolve()}")
 
-    glob_pattern = "**/*" if recursive else "*"
-    files = sorted(
-        list(folder_path.glob(f"{glob_pattern}.csv"))
-        + list(folder_path.glob(f"{glob_pattern}.xlsx"))
-        + list(folder_path.glob(f"{glob_pattern}.xls"))
+    area_type = area_type.rename(
+        columns={
+            ptype_col: "ptype_key",
+            "compliant": "num_submitted",
+            "non-compliant": "num_non_compliant",
+        }
     )
 
-    if not files:
-        raise FileNotFoundError(
-            f"No CSV/XLSX files found in Boston folder: {folder_path.resolve()}"
-        )
+    area_type["denom"] = area_type["num_submitted"] + area_type["num_non_compliant"]
+    area_type["share_non_compliant"] = area_type["num_non_compliant"] / area_type[
+        "denom"
+    ].replace(0, pd.NA)
+
+    area_type["share_submitted"] = area_type["num_submitted"] / area_type[
+        "denom"
+    ].replace(0, pd.NA)
+
+    area_type["_lookup_key"] = (
+        area_type["area_key"] + "|" + area_type["ptype_key"].astype("string")
+    )
+
+    return area_type[
+        [
+            "area_key",
+            "area_display",
+            "ptype_key",
+            "num_submitted",
+            "num_non_compliant",
+            "denom",
+            "share_submitted",
+            "share_non_compliant",
+            "_lookup_key",
+        ]
+    ]
+
+
+def compliance_by_category(
+    energy_data: pd.DataFrame,
+    year: int,
+    category_col: str,
+    year_col: str = "Data Year",
+    id_col: str = "ID",
+    status_col: str = "compliance_status",
+) -> pd.DataFrame:
+    """Compute compliance and non‑compliance counts and rates by category for a given year.
 
     frames: list[pd.DataFrame] = []
     for path in files:
@@ -1191,66 +1409,32 @@ def coalesce_columns(
         if not existing:
             continue
 
-        series = out[existing[0]]
-        for c in existing[1:]:
-            series = series.combine_first(out[c])
+    Returns:
+    -------
+    pd.DataFrame
+        Combined benchmarking dataframe with:
+        - All original rows from `benchmark_df`, unchanged.
+        - Additional rows for each year and each covered building that is absent
+          from the benchmarking data in that year, with:
+            * `Data Year` set to the corresponding year.
+            * `Reporting Status` set to `missing_label`.
+            * ID and key location columns (Address, ZIP Code, Community Area,
+              Latitude, Longitude, Location) populated from `covered_df` when available.
+            * All other benchmarking columns filled with NaN.
+    """
+    # Standardize IDs
+    covered_df = covered_df.rename(columns={"Building ID": id_col}).copy()
+    benchmark_df = benchmark_df.rename(columns={"ID": id_col}).copy()
 
-        out[target] = series
-
-        if drop_sources:
-            drop_cols = [c for c in existing if c != target]
-            out = out.drop(columns=drop_cols, errors="ignore")
-
-    return out
-
-
-def harmonize_boston_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Combine Boston duplicate columns into a single canonical set."""
-    groups = {
-        # Identifiers
-        "Property Name": ["Property Name"],
-        "Address": ["Address", "Building Address", "Parcel Address"],
-        "ZIP": [
-            "ZIP",
-            "Zip",
-            "Building Address Zip Code",
-            "Parcel Address Zip Code",
-            "Building Address Zip  Code",
-        ],
-        # Types
-        "Primary Property Type": [
-            "Property Type",
-            "Reported Property Type",
-            "Largest Property Type",
-        ],
-        # Floor area
-        "Gross Floor Area (sq ft)": [
-            "Gross Area (sq ft)",
-            "Reported Gross Floor Area (Sq Ft)",
-        ],
-        # EUI
-        "Site EUI (kBtu/sq ft)": [
-            "Site EUI (kBTU/sf)",
-            "Site EUI (kBtu/ft²)",
-            "Site EUI (Energy Use Intensity kBTu/ft²)",
-            "Site EUI (Energy Use Intensity kBtu/ft²)",
-        ],
-        # ENERGY STAR
-        "ENERGY STAR Score": ["Energy Star Score", "ENERGY STAR Score"],
-        "ENERGY STAR Certified": ["Energy Star Certified"],
-        # Energy totals
-        "Total Site Energy (kBtu)": [
-            "Total Site Energy (kBTU)",
-            "Total Site Energy Usage (kBtu)",
-        ],
-        # Water
-        "Water Intensity (gal/sq ft)": [
-            "Water Intensity (gal/sf)",
-            "Water Usage Intensity (Gallons/ft²)",
-        ],
-        # GHG
-        "GHG Emissions (MTCO2e)": ["GHG Emissions (MTCO2e)"],
-        "GHG Intensity (kgCO2e/sq ft)": ["GHG Intensity (kgCO2/sf)"],
+    bench_cols = benchmark_df.columns.tolist()
+    map_cols = {
+        "Address": "Address",
+        "Zip": "ZIP Code",
+        "Community Area Name": "Community Area",
+        "Latitude": "Latitude",
+        "Longitude": "Longitude",
+        "Location": "Location",
+        "Top Level Property Type": "Top Level Property Type",
     }
 
     out = df.copy()
@@ -1271,6 +1455,165 @@ def harmonize_boston_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     return out
 
+def merge_covered_with_benchmarking_new(
+    covered_df: pd.DataFrame,
+    benchmark_df: pd.DataFrame,
+    data_year_col: str = "Data Year",
+    status_col: str = "Reporting Status",
+    missing_label: str = "Not present in data",
+    id_col: str = "ID",
+    primary_ptype_col: str = "Primary Property Type",
+    top_level_col: str = "Top Level Property Type",
+    year_built_col: str = "Year Built",
+    effective_year_built_col: str = "Effective Year Built",
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """Add synthetic rows for covered buildings absent from benchmarking per year.
+
+    Synthetic-row rules:
+    - Primary Property Type:
+        * If ID appears in benchmarking at least once: use that ID’s most common primary property type.
+        * If ID never appears: use top-level fallback (mode primary type within that top-level in benchmarking).
+    - Effective Year Built:
+        * If ID appears in benchmarking at least once: use that ID’s Effective Year Built (from benchmarking).
+        * If ID never appears: leave Effective Year Built = np.nan (as requested).
+    """
+    covered_df = covered_df.rename(columns={"Building ID": id_col}).copy()
+    benchmark_df = benchmark_df.rename(columns={"ID": id_col}).copy()
+
+    for col in [primary_ptype_col, top_level_col]:
+        if col not in benchmark_df.columns:
+            raise KeyError(f"benchmark_df missing required column: '{col}'")
+
+    if primary_ptype_col not in covered_df.columns:
+        covered_df[primary_ptype_col] = pd.NA
+    if top_level_col not in covered_df.columns:
+        covered_df[top_level_col] = pd.NA
+
+    bench_cols = benchmark_df.columns.tolist()
+    for needed in [
+        primary_ptype_col,
+        top_level_col,
+        year_built_col,
+        effective_year_built_col,
+    ]:
+        if needed not in bench_cols:
+            bench_cols.append(needed)
+
+    map_cols = {
+        "Address": "Address",
+        "Zip": "ZIP Code",
+        "Community Area Name": "Community Area",
+        "Latitude": "Latitude",
+        "Longitude": "Longitude",
+        "Location": "Location",
+        top_level_col: top_level_col,
+    }
+
+    bench_id_primary = (
+        benchmark_df.dropna(subset=[id_col, primary_ptype_col])
+        .groupby(id_col)[primary_ptype_col]
+        .agg(lambda s: s.value_counts(dropna=True).index[0])
+    )
+    bench_ids = set(bench_id_primary.index)
+
+    # top-level -> mode(primary)
+    top_level_to_mode_primary = (
+        benchmark_df.dropna(subset=[top_level_col, primary_ptype_col])
+        .groupby(top_level_col)[primary_ptype_col]
+        .agg(lambda s: s.value_counts(dropna=True).index[0])
+        .to_dict()
+    )
+
+    covered_ids = set(covered_df[id_col].dropna().unique())
+    never_ids = covered_ids - bench_ids
+
+    id_to_primary: dict = {}
+    id_to_primary.update(bench_id_primary.to_dict())
+
+    if len(never_ids) > 0:
+        never_meta = covered_df.loc[
+            covered_df[id_col].isin(list(never_ids)), [id_col, top_level_col]
+        ].copy()
+        never_meta[top_level_col] = never_meta[top_level_col].astype(str).str.strip()
+
+        for _id, tl in zip(never_meta[id_col], never_meta[top_level_col]):
+            id_to_primary[_id] = top_level_to_mode_primary.get(tl, pd.NA)
+
+    # NOTE: We only assign this for IDs that appear in benchmarking.
+    bench_years = benchmark_df[[id_col, year_built_col]].copy()
+    bench_years[year_built_col] = pd.to_numeric(
+        bench_years[year_built_col], errors="coerce"
+    )
+
+    def _effective(series: pd.Series) -> pd.Series:
+        uniq = series.dropna().unique()
+        if len(uniq) == 1:
+            return pd.Series([uniq[0]] * len(series), index=series.index)
+        elif len(uniq) > 1:
+            return pd.Series(["Multiple Years Built"] * len(series), index=series.index)
+        return pd.Series([np.nan] * len(series), index=series.index)
+
+    id_to_effective_yb = (
+        bench_years.groupby(id_col)[year_built_col].apply(_effective).to_dict()
+    )
+    # For never_ids, we deliberately do NOT set anything (leave as NaN)
+
+    if verbose:
+        print(f"Covered IDs: {len(covered_ids):,}")
+        print(f"Benchmark IDs (ever): {len(bench_ids):,}")
+        print(f"Covered never in benchmark: {len(never_ids):,}")
+
+    # add synthetic rows per year
+    years = sorted(benchmark_df[data_year_col].drop_duplicates())
+    result = benchmark_df.copy()
+    total_added = 0
+
+    for year in years:
+        year_mask = (benchmark_df[data_year_col] == year) & benchmark_df[id_col].notna()
+        year_ids = set(benchmark_df.loc[year_mask, id_col].unique())
+
+        absent_covered = covered_df.loc[~covered_df[id_col].isin(year_ids)].copy()
+        num_new = len(absent_covered)
+        if num_new == 0:
+            continue
+
+        new_rows = pd.DataFrame(np.nan, index=absent_covered.index, columns=bench_cols)
+        new_rows[data_year_col] = year
+        new_rows[status_col] = missing_label
+        new_rows[id_col] = absent_covered[id_col]
+
+        # Top level from covered (if present)
+        if top_level_col in absent_covered.columns:
+            new_rows[top_level_col] = absent_covered[top_level_col]
+
+        # Primary property type assignment
+        new_rows[primary_ptype_col] = new_rows[id_col].map(id_to_primary)
+
+        # Effective Year Built assignment: only for IDs that appear in benchmarking
+        new_rows[effective_year_built_col] = new_rows[id_col].map(id_to_effective_yb)
+
+        for cov_col, bench_col in map_cols.items():
+            if cov_col in absent_covered.columns and bench_col in new_rows.columns:
+                new_rows[bench_col] = absent_covered[cov_col]
+
+        result = pd.concat([result, new_rows], ignore_index=True)
+        total_added += num_new
+        if verbose:
+            print(f"Year {year}: added {num_new} rows")
+
+    if verbose:
+        print(f"✅ Total added: {total_added} rows across all years")
+
+    return result
+
+
+def add_reporting_compliance_flags(
+    benchmark_df: pd.DataFrame,
+    year_col: str = "Data Year",
+    status_col: str = "Reporting Status",
+) -> pd.DataFrame:
+    """Standardize reporting status and add compliance flags for 2018+ records.
 
 def boston_to_chicago(boston_df: pd.DataFrame) -> pd.DataFrame:
     """Map Boston benchmarking data into Chicago's schema.

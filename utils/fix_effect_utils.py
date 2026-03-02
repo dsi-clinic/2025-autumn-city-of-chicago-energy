@@ -5,6 +5,7 @@ for the Chicago Energy Benchmarking dataset.
 """
 
 import logging
+import re
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -482,3 +483,163 @@ def plotting_r_sqared(
     plt.grid(axis="x", alpha=0.3, linestyle="--")
     plt.tight_layout()
     plt.show()
+
+
+def assign_top_level_property_type(data: pd.DataFrame) -> pd.DataFrame:
+    """Creates a condensed 'TopLevelPropertyType' column for regression modeling,
+
+    grouping granular property types by operational intensity and function.
+    Uses clean string formatting for easy integration with statsmodels.
+    """
+    df_copy = data.copy()
+
+    category_mapping = {
+        # Category 1: lodging
+        "multifamily housing": "lodging",
+        "residential": "lodging",
+        "residence hall/dormitory": "lodging",
+        # Category 2: business_building
+        "office": "business_building",
+        "medical office": "business_building",
+        "mixed use property": "business_building",
+        # Category 3: intensive_constant
+        "hospital": "intensive_constant",
+        "laboratory": "intensive_constant",
+        "supermarket/grocery store": "intensive_constant",
+        "senior care community": "intensive_constant",
+        "residential care facility": "intensive_constant",
+        # Category 4: educational
+        "college/university": "educational",
+        "k-12 school": "educational",
+        "library": "educational",
+        "museum": "educational",
+        # Category 5: retail_entertainment
+        "retail store": "retail_entertainment",
+        "mall": "retail_entertainment",
+        "wholesale club/supercenter": "retail_entertainment",
+        "fitness center/health club/gym": "retail_entertainment",
+        "movie theater": "retail_entertainment",
+        "performing arts": "retail_entertainment",
+        "other - entertainment/public assembly": "retail_entertainment",
+        "recreation": "retail_entertainment",
+        "social/meeting hall": "retail_entertainment",
+        # Category 6: Hospitality
+        "hotel": "Hospitality",
+        # Category 7: Other
+        "other": "other",
+        "worship facility": "other",
+    }
+
+    # Map and clean
+    df_copy["TopLevelPropertyType"] = (
+        df_copy["Primary Property Type"].str.lower().map(category_mapping)
+    )
+    df_copy["TopLevelPropertyType"] = df_copy["TopLevelPropertyType"].fillna("other")
+
+    return df_copy
+
+
+def plot_categorical_interactions_over_time(
+    model: RegressionResultsWrapper,
+    time_col: str,
+    category_col: str,
+    title: str = "Interaction Effects Over Time",
+    xlabel: str = "Time",
+    ylabel: str = "Coefficient Value",
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plots the interaction effects of a categorical variable over time from a statsmodels object.
+
+    Assumes that the model formula treats both the time variable and the category
+    variable as categorical factors (e.g., using `C(time_col):C(category_col)`),
+    which generates Patsy string formats containing `[T.Value]`.
+
+    model : RegressionResultsWrapper
+        The fitted statsmodels regression model.
+    time_col : str
+        The exact string name of the time column used in the model (e.g., 'Data Year').
+    category_col : str
+        The exact string name of the categorical column (e.g., 'Primary Property Type').
+    title : str, optional
+        Title of the generated plot.
+    xlabel : str, optional
+        Label for the X-axis.
+    ylabel : str, optional
+        Label for the Y-axis.
+
+    Returns:
+    -------
+    Tuple[plt.Figure, plt.Axes]
+        The Matplotlib Figure and Axes objects for further customization or saving.
+    """
+    params = model.params
+    conf_int = model.conf_int()
+    conf_int.columns = ["Lower", "Upper"]
+
+    coef_df = pd.DataFrame({"Coefficient": params}).join(conf_int)
+    interaction_df = coef_df[coef_df.index.str.contains(":")].copy()
+    interaction_df["Error"] = interaction_df["Upper"] - interaction_df["Coefficient"]
+
+    def extract_interaction_info(idx_str: str) -> tuple[int | None, str]:
+        """Dynamically parses Patsy index strings based on column parameters."""
+        time_pattern = rf"{re.escape(time_col)}.*?\[T\.([0-9]+)\]"
+        cat_pattern = rf"{re.escape(category_col)}.*?\[T\.([^\]]+)\]"
+
+        time_match = re.search(time_pattern, idx_str)
+        extracted_time = int(time_match.group(1)) if time_match else None
+
+        type_match = re.search(cat_pattern, idx_str)
+        extracted_cat = type_match.group(1) if type_match else "Unknown"
+
+        return extracted_time, extracted_cat
+
+    extracted_series = interaction_df.index.to_series().apply(extract_interaction_info)
+    interaction_df["Time"] = extracted_series.apply(lambda x: x[0])
+    interaction_df["Category"] = extracted_series.apply(lambda x: x[1])
+
+    interaction_df = interaction_df.dropna(subset=["Time"])
+
+    unique_cats = sorted(
+        [cat for cat in interaction_df["Category"].unique() if cat != "Unknown"]
+    )
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    for p_type in unique_cats:
+        subset = interaction_df[interaction_df["Category"] == p_type].copy()
+        subset = subset.sort_values("Time")
+
+        ax.errorbar(
+            x=subset["Time"],
+            y=subset["Coefficient"],
+            yerr=subset["Error"],
+            fmt="o-",
+            elinewidth=2,
+            capsize=3,
+            markersize=6,
+            linewidth=2,
+            alpha=0.8,
+            label=p_type,
+        )
+
+    ax.axhline(
+        0,
+        color="black",
+        linestyle="--",
+        linewidth=2,
+        label="Baseline Category (Zero Effect)",
+    )
+
+    ax.set_title(title, fontsize=16, fontweight="bold")
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
+
+    all_times = sorted(interaction_df["Time"].unique())
+    ax.set_xticks(all_times)
+
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
+
+    ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left")
+
+    fig.tight_layout()
+
+    return fig, ax

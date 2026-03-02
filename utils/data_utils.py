@@ -3,7 +3,10 @@
 import json
 import logging
 import re
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 import numpy as np
 import pandas as pd
@@ -108,6 +111,29 @@ def concurrent_buildings(
 ) -> pd.DataFrame:
     """Filter buildings that have submitted data for all years in a specified range.
 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The energy dataset containing at least building ID and year columns.
+    start_year : int, default = 2016
+        The first year in the required range (inclusive).
+    end_year : int, default = 2023
+        The last year in the required range (inclusive).
+    id_col : str, default="ID"
+        The column name that identifies unique buildings.
+    year_col : str, default="Data Year"
+        The column name indicating the year of the data entry.
+    building_type_col : str, default="Primary Property Type"
+        The column name for the building type.
+    building_type : list, default=[]
+        A list of building types to include. If empty, all types are included.
+
+    Returns:
+    -------
+    pd.DataFrame
+        A filtered DataFrame containing only records of buildings that have
+        data submitted for all years in the specified range, restricted to data within that range.
+
     Only records within [start_year, end_year] are kept. For years >= 2018,
     only rows whose reporting status matches one of the `submitted_labels`
     are considered.
@@ -137,8 +163,6 @@ def concurrent_buildings(
         # keep all pre-2018 rows; filter 2018+ to submitted
         mask_submitted = df_in_range[status_col] == submitted_label
         df_in_range = df_in_range[mask_pre_2018 | (mask_2018_plus & mask_submitted)]
-
-    required_years = set(range(start_year, end_year + 1))
 
     required_years = set(range(start_year, end_year + 1))
 
@@ -458,32 +482,40 @@ def covid_impact_category(
     return energy_df
 
 
-def assign_effective_year_built(df: pd.DataFrame) -> pd.DataFrame:
-    """Assigns the 'Effective Year Built' for each building ID.
+def assign_effective_year_built(buildings: pd.DataFrame) -> pd.DataFrame:
+    """Add an 'Effective Year Built' column per building ID.
 
-    If one unique non-NaN year exists, it is assigned; if multiple years exist, assigns 'Multiple Years Built'; otherwise assigns np.nan.
+    Rules (computed within each ID group):
+    - If there is exactly one unique non-null Year Built, assign that year to all rows.
+    - If there are multiple unique non-null Year Built values, assign "Multiple Years Built".
+    - If all Year Built values are null, assign NaN.
 
-    Args:
-        df (pd.DataFrame): DataFrame with columns 'ID' and 'Year Built'.
+    Parameters
+    ----------
+    buildings:
+        DataFrame containing at least 'ID' and 'Year Built'.
 
     Returns:
-        pd.DataFrame: Original DataFrame with new 'Effective Year Built' column.
+    -------
+    pd.DataFrame
+        Copy of input with an added 'Effective Year Built' column.
     """
+    out = buildings.copy()
 
-    def get_years(series: pd.Series) -> np.ndarray:
-        unique_years = series.dropna().unique()
-        if len(unique_years) == 1:
-            # Building has one unique non-NaN value (regardless of number of NaNs)
-            return np.repeat(unique_years[0], len(series))
-        elif len(unique_years) > 1:
-            # Building has multiple non-NaN values
-            return np.repeat("Multiple Years Built", len(series))
-        else:
-            # Building has only NaNs
-            return np.repeat(np.nan, len(series))
+    # Count distinct, non-null years per ID
+    n_unique = out.groupby("ID")["Year Built"].transform(lambda s: s.dropna().nunique())
 
-    df["Effective Year Built"] = df.groupby("ID")["Year Built"].transform(get_years)
-    return df
+    # The single (non-null) year, repeated per row (NaN if none)
+    single_year = out.groupby("ID")["Year Built"].transform("first")
+
+    # Build result
+    out["Effective Year Built"] = np.where(
+        n_unique == 1,
+        single_year,
+        np.where(n_unique > 1, "Multiple Years Built", np.nan),
+    )
+
+    return out
 
 
 def categorize_time_built(df: pd.DataFrame) -> pd.date_range:
@@ -683,171 +715,207 @@ def load_national_eui_data() -> dict:
     return pd.DataFrame(national_data)
 
 
-def load_covered_buildings() -> pd.DataFrame:
-    """Load and clean the Chicago Energy Benchmarking *Covered Buildings* dataset.
+def load_major_us_cities() -> dict[str, pd.DataFrame]:
+    """Load all major US city datasets.
 
-    The dataset is loaded from CSV files located in
-    DATA_DIR / 'chicago_energy_benchmarking_covered' and is expected
-    to contain:
-      - A unique Chicago Energy Benchmarking ID per property
-      - Cohort / size information
-      - Community Area, address, lat/long, etc.
+    - Top-level CSV files are loaded directly.
+    - Boston_data folder is loaded using load_boston_energy_data().
+    - Returns: {key: DataFrame}
+    Keys:
+        - For top-level CSV files: the file name stem
+          (e.g., "Seattle_Benchmarking_Performance_Ranges_by_Building_Type").
+        - For the Boston_data folder: "boston_energy_raw".
     """
-    path = DATA_DIR / "chicago_covered_buildings"
+    path = DATA_DIR / "major_us_cities_data"
 
-    # Backup absolute path for notebook use
+    # Backup path for /project environments
     if not path.exists():
-        path = Path("/project") / "data" / "chicago_covered_buildings"
+        path = Path("/project") / "data" / "major_us_cities_data"
 
     if not path.exists():
-        raise FileNotFoundError(f"Covered Buildings data directory not found: {path}")
+        raise FileNotFoundError(f"Data directory not found: {path}")
 
-    csv_files = list(path.glob("*.csv"))
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV files found in {path}")
+    city_data: dict[str, pd.DataFrame] = {}
 
-    load_dfs = [pd.read_csv(file) for file in csv_files]
-    covered_df = pd.concat(load_dfs, ignore_index=True)
+    csv_files = sorted(path.glob("*.csv"))
 
-    # Normalize column names once here to match your benchmarking data
-    col_renames = {
-        "Building ID": "ID",
-        "Verification Year": "Data Year",
-    }
+    for file in csv_files:
+        df_city = pd.read_csv(file, low_memory=False)
+        key = file.stem
+        city_data[key] = df_city
+        logger.info("Loaded %s → %s", file.name, df_city.shape)
 
-    covered_df = covered_df.rename(columns=col_renames)
-
-    # Lowercase string-like columns for consistency
-    for col in covered_df.select_dtypes(include="object").columns:
-        covered_df[col] = covered_df[col].astype(str).str.lower().str.strip()
-
-    # Ensure numeric types where relevant
-    if "Data Year" in covered_df.columns:
-        covered_df["Data Year"] = pd.to_numeric(
-            covered_df["Data Year"], errors="coerce"
+    boston_folder = path / "Boston_data"
+    if boston_folder.exists():
+        df_boston = load_boston_energy_data(boston_folder)
+        city_data["boston_energy_raw"] = df_boston
+        logger.info(
+            "Loaded Boston_data folder → %s",
+            df_boston.shape,
         )
 
-    return covered_df
+    if not city_data:
+        raise FileNotFoundError(f"No datasets found in {path}")
+
+    return city_data
 
 
-def find_out_of_compliance(
-    start_year: int = 2016,
-    end_year: int = 2023,
-    id_col: str = "ID",
-    year_col: str = "Data Year",
-) -> pd.DataFrame:
-    """Identify buildings assumed covered in a year but missing in reporting.
+# -----------------------------------------------------------------------------------
+# ---------------------------- Merge Major City Data --------------------------------
+# -----------------------------------------------------------------------------------
 
-    Coverage is inferred by treating all buildings in the covered list
-    as covered in every year from start_year through end_year, ignoring
-    the verification year. Returns one row per (ID, year) where the
-    building is covered but does not appear in the reporting data.
+CHICAGO_CANONICAL_COLS = {
+    "Data Year",
+    "ID",
+    "Property Name",
+    "Address",
+    "ZIP Code",
+    "Primary Property Type",
+    "Gross Floor Area - Buildings (sq ft)",
+    "Site EUI (kBtu/sq ft)",
+    "Source EUI (kBtu/sq ft)",
+    "ENERGY STAR Score",
+}
+
+
+@dataclass(frozen=True)
+class CitySchema:
+    """Defines how to map a city's raw columns into Chicago's canonical schema."""
+
+    city: str
+    column_map: dict[str, str]
+    required_cols: Iterable[str] = ("Data Year", "Address", "Primary Property Type")
+
+
+def _standardize_strings(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
+    out = df.copy()
+    for c in cols:
+        if c in out.columns:
+            out[c] = (
+                out[c]
+                .astype(str)
+                .str.strip()
+                .replace({"": np.nan, "nan": np.nan, "none": np.nan})
+            )
+    return out
+
+
+def _apply_chicago_style_cleaning(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply a light version of Chicago-style cleaning for city data.
+
+    IMPORTANT: avoid lowercasing Address if you merge on Address later.
     """
-    covered_expanded = expand_covered_buildings(
-        start_year=start_year,
-        end_year=end_year,
-        id_col=id_col,
-    )
+    out = df.copy()
 
-    reported = load_data()
-
-    # Normalize types
-    covered_expanded[id_col] = covered_expanded[id_col].astype(str).str.strip()
-    reported[id_col] = reported[id_col].astype(str).str.strip()
-
-    covered_expanded[year_col] = pd.to_numeric(
-        covered_expanded[year_col], errors="coerce"
-    ).astype("Int64")
-    reported[year_col] = pd.to_numeric(reported[year_col], errors="coerce").astype(
-        "Int64"
-    )
-
-    covered_expanded = covered_expanded[
-        (covered_expanded[year_col] >= start_year)
-        & (covered_expanded[year_col] <= end_year)
-    ].copy()
-    reported = reported[
-        (reported[year_col] >= start_year) & (reported[year_col] <= end_year)
-    ].copy()
-
-    # Unique (ID, year) pairs
-    covered_pairs = covered_expanded[[id_col, year_col]].drop_duplicates()
-    reported_pairs = reported[[id_col, year_col]].drop_duplicates()
-
-    merged = covered_pairs.merge(
-        reported_pairs,
-        on=[id_col, year_col],
-        how="left",
-        indicator=True,
-    )
-
-    missing_pairs = merged[merged["_merge"] == "left_only"][[id_col, year_col]].rename(
-        columns={year_col: "Missing Year"}
-    )
-
-    # Attach attributes from covered list
-    attrs_cols = [
-        id_col,
-        year_col,
-        "Cohort - Sector",
-        "Cohort - Size",
-        "Community Area Name",
-        "Community Area Number",
-        "Ward",
-        "Latitude",
-        "Longitude",
-        "Location",
+    numeric_cols = [
+        "Gross Floor Area - Buildings (sq ft)",
+        "Site EUI (kBtu/sq ft)",
+        "Source EUI (kBtu/sq ft)",
+        "ENERGY STAR Score",
     ]
-    attrs_cols = [c for c in attrs_cols if c in covered_expanded.columns]
-
-    covered_attrs = covered_expanded[attrs_cols].drop_duplicates(
-        subset=[id_col, year_col]
+    out = out.assign(
+        **{col: clean_numeric(out[col]) for col in numeric_cols if col in out.columns}
     )
 
-    out_of_compliance = (
-        missing_pairs.merge(
-            covered_attrs,
-            left_on=[id_col, "Missing Year"],
-            right_on=[id_col, year_col],
-            how="left",
-        )
-        .drop(columns=[year_col], errors="ignore")
-        .drop_duplicates()
+    str_cols = ["Property Name", "Primary Property Type", "ZIP Code"]
+    out = _standardize_strings(out, str_cols)
+
+    return out
+
+
+# --- Chicago schema (exact) ---
+CHICAGO_COLS = [
+    "Data Year",
+    "ID",
+    "Property Name",
+    "Address",
+    "ZIP Code",
+    "Community Area",
+    "Primary Property Type",
+    "Gross Floor Area - Buildings (sq ft)",
+    "Year Built",
+    "# of Buildings",
+    "ENERGY STAR Score",
+    "Electricity Use (kBtu)",
+    "Natural Gas Use (kBtu)",
+    "District Steam Use (kBtu)",
+    "District Chilled Water Use (kBtu)",
+    "All Other Fuel Use (kBtu)",
+    "Site EUI (kBtu/sq ft)",
+    "Source EUI (kBtu/sq ft)",
+    "Weather Normalized Site EUI (kBtu/sq ft)",
+    "Weather Normalized Source EUI (kBtu/sq ft)",
+    "Total GHG Emissions (Metric Tons CO2e)",
+    "GHG Intensity (kg CO2e/sq ft)",
+    "Latitude",
+    "Longitude",
+    "Location",
+    "Reporting Status",
+    "Chicago Energy Rating",
+    "Exempt From Chicago Energy Rating",
+    "Water Use (kGal)",
+    "Row_ID",
+]
+
+KWH_TO_KBTU = 3.412141633
+
+
+def _to_num(s: pd.Series | None) -> pd.Series:
+    """Coerce a Series-like object to numeric; returns float with NaNs for bad values."""
+    if s is None:
+        return pd.Series(dtype="float64")
+    return pd.to_numeric(s, errors="coerce")
+
+
+def _make_location(
+    df_city: pd.DataFrame,
+    lat_col: str = "Latitude",
+    lon_col: str = "Longitude",
+) -> pd.Series:
+    """Create Chicago-style Location string: 'POINT (lon lat)' where lat/lon present."""
+    lat = _to_num(df_city.get(lat_col))
+    lon = _to_num(df_city.get(lon_col))
+
+    loc = pd.Series(pd.NA, index=df_city.index, dtype="object")
+    ok = lat.notna() & lon.notna()
+    loc.loc[ok] = (
+        "POINT (" + lon.loc[ok].astype(str) + " " + lat.loc[ok].astype(str) + ")"
     )
+    return loc
 
-    return out_of_compliance
 
+def sf_to_chicago(sf_df: pd.DataFrame) -> pd.DataFrame:
+    """Map San Francisco benchmarking data into Chicago's schema.
 
-def expand_covered_buildings(
-    start_year: int,
-    end_year: int,
-    id_col: str = "ID",
-) -> pd.DataFrame:
-    """Treat every building in the covered list as covered in every year.
-
-    Buildings are assumed covered from start_year through end_year, and
-    mere presence in the covered list is interpreted as being subject
-    to the ordinance.
+    Assumes SF columns (common from SF Open Data export) like:
+    - Benchmark Year, unique_identifier, Building Name, Building Address, Postal Code
+    - Category, Floor Area, Year Built, ENERGY STAR Score
+    - Electricity Use - Grid Purchase (kWh), Natural Gas Use (kBtu), District Steam Use (kBtu)
+    - Site EUI (kBtu/ft2), Source EUI (kBtu/ft2), Weather Normalized ... (kBtu/ft2)
+    - Total GHG Emissions ..., Total GHG Emissions Intensity ...
+    - latitude, longitude, Benchmark Status, Reason for Exemption
     """
-    covered = load_covered_buildings().copy()
+    out = pd.DataFrame(index=sf_df.index)
 
-    # Normalize ID
-    covered[id_col] = covered[id_col].astype(str).str.strip()
+    out["Data Year"] = _to_num(sf_df.get("Benchmark Year"))
+    out["ID"] = sf_df.get("unique_identifier")
 
-    # Drop any duplicate IDs (keep first row as canonical attributes)
-    covered_unique = covered.drop_duplicates(subset=[id_col]).copy()
+    out["Property Name"] = sf_df.get("Building Name")
+    out["Address"] = sf_df.get("Building Address")
+    out["ZIP Code"] = sf_df.get("Postal Code")
 
-    records = []
-    for _, row in covered_unique.iterrows():
-        for y in range(start_year, end_year + 1):
-            r = row.to_dict()
-            r["Data Year"] = y  # synthetic coverage year, not the verification year
-            records.append(r)
+    out["Community Area"] = pd.NA
+    out["Primary Property Type"] = sf_df.get("Category")
 
-    expanded = pd.DataFrame.from_records(records)
+    out["Gross Floor Area - Buildings (sq ft)"] = clean_numeric(sf_df.get("Floor Area"))
+    out["Year Built"] = _to_num(sf_df.get("Year Built"))
+    out["# of Buildings"] = pd.NA
 
-    return expanded
+    out["ENERGY STAR Score"] = _to_num(sf_df.get("ENERGY STAR Score"))
 
+    # Electricity: kWh -> kBtu
+    elec_kwh = _to_num(sf_df.get("Electricity Use - Grid Purchase (kWh)"))
+    out["Electricity Use (kBtu)"] = elec_kwh * KWH_TO_KBTU
 
 def covered_assign_top_types(
     covered_df: pd.DataFrame,
@@ -938,124 +1006,116 @@ def clean_year_built(
 
     result = cleaned_df.groupby(id_col, group_keys=False).apply(fix_building)
 
-    # Reconstruct with original columns and preserve ID
-    return result.reset_index(drop=True)
+    out["Total GHG Emissions (Metric Tons CO2e)"] = _to_num(
+        sf_df.get("Total GHG Emissions (Metric Tons CO2e)")
+    )
+    out["GHG Intensity (kg CO2e/sq ft)"] = _to_num(
+        sf_df.get("Total GHG Emissions Intensity (kGCO2e/ft2)")
+    )
+
+    # SF lat/lon are often lowercase
+    out["Latitude"] = _to_num(sf_df.get("latitude"))
+    out["Longitude"] = _to_num(sf_df.get("longitude"))
+    out["Location"] = _make_location(out, "Latitude", "Longitude")
+
+    out["Reporting Status"] = sf_df.get("Benchmark Status")
+    out["Chicago Energy Rating"] = pd.NA
+    out["Exempt From Chicago Energy Rating"] = sf_df.get("Reason for Exemption")
+
+    out["Water Use (kGal)"] = pd.NA
+    out["Row_ID"] = pd.NA
+
+    for c in CHICAGO_COLS:
+        if c not in out.columns:
+            out[c] = pd.NA
+
+    return out[CHICAGO_COLS].copy()
 
 
-# --- compliance analysis ---
+def seattle_to_chicago(seattle_df: pd.DataFrame) -> pd.DataFrame:
+    """Map Seattle benchmarking data (current column-name variant) into Chicago's schema.
 
-
-def filter_buildings_reported(
-    energy_data: pd.DataFrame,
-    energy_cols: list[str],
-    reporting_status_col: str = "Reporting Status",
-    allowed_statuses: list[str] | None = None,
-    require_any_energy: bool = True,
-) -> pd.DataFrame:
-    """Filter energy benchmarking data to rows that count as 'reported'.
-
-    A row is kept if:
-      - It has at least one non-null energy/emissions metric (by default), AND
-      - Its reporting status is in `allowed_statuses`
-
-    Returns:
-    -------
-    pd.DataFrame
-        Filtered dataframe of reported buildings.
+    Seattle raw columns look like: OSEBuildingID, DataYear, BuildingName, ZipCode, ...
     """
-    if allowed_statuses is None:
-        allowed_statuses = ["submitted", "submitted data", "nan"]
+    out = pd.DataFrame(index=seattle_df.index)
 
-    missing_energy_cols = [c for c in energy_cols if c not in energy_data.columns]
-    if missing_energy_cols:
-        raise KeyError(f"Missing energy columns: {missing_energy_cols}")
+    out["Data Year"] = _to_num(seattle_df.get("DataYear"))
+    out["ID"] = seattle_df.get("OSEBuildingID")
 
-    data = energy_data.copy()
-    status_mask = data[reporting_status_col].isin(allowed_statuses)
+    out["Property Name"] = seattle_df.get("BuildingName")
+    out["Address"] = seattle_df.get("Address")
+    out["ZIP Code"] = seattle_df.get("ZipCode")
 
-    if require_any_energy:
-        energy_mask = data[energy_cols].notna().any(axis=1)
+    out["Community Area"] = pd.NA
+    out["Primary Property Type"] = seattle_df.get("EPAPropertyType")
+
+    # Prefer Buildings GFA; fallback to Total; fallback to self-report
+    if "PropertyGFABuildings" in seattle_df.columns:
+        out["Gross Floor Area - Buildings (sq ft)"] = clean_numeric(
+            seattle_df.get("PropertyGFABuildings")
+        )
+    elif "PropertyGFATotal" in seattle_df.columns:
+        out["Gross Floor Area - Buildings (sq ft)"] = _to_num(
+            seattle_df.get("PropertyGFATotal")
+        )
     else:
-        energy_mask = pd.Series(True, index=data.index)
+        out["Gross Floor Area - Buildings (sq ft)"] = _to_num(
+            seattle_df.get("SelfReportGFABuildings")
+        )
 
-    reported = data[status_mask & energy_mask].copy()
-    return reported
+    out["Year Built"] = _to_num(seattle_df.get("YearBuilt"))
+    out["# of Buildings"] = _to_num(seattle_df.get("NumberofBuildings"))
 
+    out["ENERGY STAR Score"] = _to_num(seattle_df.get("ENERGYSTARScore"))
 
-def add_compliance_status(
-    energy_data: pd.DataFrame,
-    energy_cols: list[str],
-    reporting_status_col: str = "Reporting Status",
-    exempt_col: str = "Exempt From Chicago Energy Rating",
-    allowed_statuses: list[str] | None = None,
-    require_any_energy: bool = True,
-    output_col: str = "compliance_status",
-    inplace: bool = False,
-) -> pd.DataFrame:
-    """Normalize reporting status + add compliance labels
-
-    - Label exempt-flag rows as 'exempt' first
-    - If an exempt-flag row passes reported rule -> relabel to 'compliant'
-    - For non-exempt rows:
-        - reported -> 'compliant'
-        - not reported -> 'non-compliant'
-
-    Parameters
-    ----------
-    energy_data : pd.DataFrame
-        Full energy benchmarking dataset.
-    energy_cols : list[str]
-        Columns used to determine whether a building has reported
-        valid energy data.
-    reporting_status_col : str, default "Reporting Status"
-        Column containing raw reporting status values.
-    exempt_col : str, default "Exempt From Chicago Energy Rating"
-        Column indicating exemption status (True/False).
-    allowed_statuses : list[str] | None
-        Reporting statuses that count as "submitted".
-    output_col : str
-        Name of the new compliance status column.
-
-    Returns:
-    -------
-    pd.DataFrame
-        DataFrame with a new column `output_col`
-        containing compliance labels.
-    """
-    data = energy_data if inplace else energy_data.copy()
-
-    if reporting_status_col not in data.columns:
-        raise KeyError(f"Missing column: {reporting_status_col}")
-
-    data[reporting_status_col] = (
-        data[reporting_status_col].astype(str).str.strip().str.lower()
-    )
-    data[reporting_status_col] = data[reporting_status_col].replace(
-        {"submitted data": "submitted", "not covered 2024": "exempt"}
-    )
-
-    if allowed_statuses is None:
-        allowed_statuses = ["submitted", "nan"]
-
-    reported_df = filter_buildings_reported(
-        energy_data=data,
-        energy_cols=energy_cols,
-        reporting_status_col=reporting_status_col,
-        allowed_statuses=allowed_statuses,
-        require_any_energy=require_any_energy,
-    )
-    reported_mask = data.index.isin(reported_df.index)
-
-    if exempt_col in data.columns:
-        exempt_true = data[exempt_col].astype(str).str.strip().str.lower().eq("true")
+    # Electricity: prefer kBtu; else convert kWh -> kBtu
+    if "Electricity(kBtu)" in seattle_df.columns:
+        out["Electricity Use (kBtu)"] = _to_num(seattle_df.get("Electricity(kBtu)"))
     else:
-        exempt_true = pd.Series(False, index=data.index)
+        out["Electricity Use (kBtu)"] = (
+            _to_num(seattle_df.get("Electricity(kWh)")) * KWH_TO_KBTU
+        )
 
-    data[output_col] = "other"  # default
-    data.loc[exempt_true, output_col] = "exempt"
-    data.loc[exempt_true & reported_mask, output_col] = "compliant"
-    data.loc[(~exempt_true) & reported_mask, output_col] = "compliant"
-    data.loc[(~exempt_true) & (~reported_mask), output_col] = "non-compliant"
+    # Natural gas: prefer kBtu; else therms -> kBtu (1 therm = 100 kBtu)
+    if "NaturalGas(kBtu)" in seattle_df.columns:
+        out["Natural Gas Use (kBtu)"] = _to_num(seattle_df.get("NaturalGas(kBtu)"))
+    else:
+        out["Natural Gas Use (kBtu)"] = (
+            _to_num(seattle_df.get("NaturalGas(therms)")) * 100.0
+        )
+
+    out["District Steam Use (kBtu)"] = _to_num(seattle_df.get("SteamUse(kBtu)"))
+
+    out["District Chilled Water Use (kBtu)"] = pd.NA
+    out["All Other Fuel Use (kBtu)"] = pd.NA
+
+    # EUI units already match Chicago (kBtu/sf == kBtu/sq ft)
+    out["Site EUI (kBtu/sq ft)"] = _to_num(seattle_df.get("SiteEUI(kBTu/sf)"))
+    if out["Site EUI (kBtu/sq ft)"].isna().all():
+        out["Site EUI (kBtu/sq ft)"] = _to_num(seattle_df.get("SiteEUI(kBtu/sf)"))
+
+    out["Source EUI (kBtu/sq ft)"] = _to_num(seattle_df.get("SourceEUI(kBtu/sf)"))
+    out["Weather Normalized Site EUI (kBtu/sq ft)"] = _to_num(
+        seattle_df.get("SiteEUIWN(kBtu/sf)")
+    )
+    out["Weather Normalized Source EUI (kBtu/sq ft)"] = _to_num(
+        seattle_df.get("SourceEUIWN(kBtu/sf)")
+    )
+
+    out["Total GHG Emissions (Metric Tons CO2e)"] = _to_num(
+        seattle_df.get("TotalGHGEmissions")
+    )
+    out["GHG Intensity (kg CO2e/sq ft)"] = _to_num(
+        seattle_df.get("GHGEmissionsIntensity")
+    )
+
+    out["Latitude"] = _to_num(seattle_df.get("Latitude"))
+    out["Longitude"] = _to_num(seattle_df.get("Longitude"))
+    out["Location"] = _make_location(out, "Latitude", "Longitude")
+
+    out["Reporting Status"] = seattle_df.get("ComplianceStatus")
+    out["Chicago Energy Rating"] = pd.NA
+    out["Exempt From Chicago Energy Rating"] = seattle_df.get("ComplianceIssue")
 
     # NEW: force "not present in data" -> non-compliant
     data.loc[
@@ -1065,6 +1125,9 @@ def add_compliance_status(
 
     return data
 
+    for c in CHICAGO_COLS:
+        if c not in out.columns:
+            out[c] = pd.NA
 
 def build_compliance_base(
     energy_data: pd.DataFrame,
@@ -1107,8 +1170,6 @@ def build_compliance_base(
         Filtered base dataframe for the specified year.
     """
 
-    def norm_upper(x: str | None) -> str | None:
-        return pd.NA if pd.isna(x) else str(x).strip().upper()
 
     if keep_cols is None:
         keep_cols = [property_type_col, top_level_col, time_built_col]
@@ -1145,6 +1206,7 @@ def build_compliance_base(
     out_cols = ["Building ID", "area_key", "area_display"] + keep_cols + [status_col]
     return base[out_cols]
 
+        candidates.append(dff)
 
 def build_area_table_overall(
     base: pd.DataFrame,
@@ -1216,8 +1278,10 @@ def build_area_table_overall(
             "share_submitted",
             "share_non_compliant",
         ]
-    ]
+        boston_df = boston_df.dropna(axis=1, how="all").dropna(how="all")
+        return boston_df
 
+    raise ValueError(f"Unsupported file type: {path.suffix}")
 
 def build_area_table_by_property(
     base: pd.DataFrame,
@@ -1253,9 +1317,8 @@ def build_area_table_by_property(
         .reset_index()
     )
 
-    for col in ["compliant", "non-compliant"]:
-        if col not in area_type.columns:
-            area_type[col] = 0
+    if not folder_path.exists():
+        raise FileNotFoundError(f"Boston folder not found: {folder_path.resolve()}")
 
     area_type = area_type.rename(
         columns={
@@ -1303,100 +1366,48 @@ def compliance_by_category(
 ) -> pd.DataFrame:
     """Compute compliance and non‑compliance counts and rates by category for a given year.
 
-    Parameters
-    ----------
-    energy_data : pd.DataFrame
-        Full dataset of buildings, including both reporting and non‑reporting buildings
-        for all years.
-    energy_reported : pd.DataFrame
-        Subset of buildings that successfully reported (i.e., are considered compliant),
-        typically filtered to rows with valid reporting status.
-    year : int
-        Single calendar year (from the `year_col`) for which compliance should be
-        calculated.
-    category_col : str
-        Column name in `energy_data` used to group buildings (e.g., "Primary Property Type",
-        "Top Level Property Type", "Community Area").
-    year_col : str, optional
-        Name of the column containing the data year, by default "Data Year".
-    id_col : str, optional
-        Column name representing a unique building identifier, by default "ID".
+    frames: list[pd.DataFrame] = []
+    for path in files:
+        boston_df = _read_boston_file(path)
+        boston_df["City"] = city_name
+        boston_df["source_file"] = path.name
 
-    Returns:
-    -------
-    pd.DataFrame
-        Summary table with one row per unique value in `category_col` for the specified
-        year, including:
-        - `category_col`: the category value (group).
-        - `compliant`: count of compliant buildings in that category.
-        - `non_compliant`: count of non‑compliant buildings in that category.
-        - `total`: total number of buildings in that category (`compliant + non_compliant`).
-        - `non_compliance_rate`: fraction of non‑compliant buildings (`non_compliant / total`),
-          sorted in descending order of `total`.
-    """
-    if status_col not in energy_data.columns:
-        raise KeyError(f"'{status_col}' not found. Run add_compliance_status() first.")
+        if year_col not in boston_df.columns:
+            inferred = _infer_year_from_name(path.name)
+            if inferred is not None:
+                boston_df[year_col] = inferred
 
-    data = energy_data[energy_data[year_col] == year].copy()
-    data[status_col] = data[status_col].astype(str).str.strip().str.lower()
-    data = data[data[status_col].isin(["compliant", "non-compliant"])].copy()
+        frames.append(boston_df)
 
-    summary = data.pivot_table(
-        index=category_col,
-        columns=status_col,
-        values=id_col,
-        aggfunc="count",
-        fill_value=0,
-    ).reset_index()
+    out = pd.concat(frames, ignore_index=True, sort=False)
 
-    if "compliant" not in summary.columns:
-        summary["compliant"] = 0
-    if "non-compliant" not in summary.columns:
-        summary["non-compliant"] = 0
+    if year_col in out.columns:
+        out[year_col] = pd.to_numeric(out[year_col], errors="coerce").astype("Int64")
 
-    summary = summary.rename(columns={"non-compliant": "non_compliant"})
-
-    summary["total"] = summary["compliant"] + summary["non_compliant"]
-    summary["non_compliance_rate"] = summary["non_compliant"] / summary[
-        "total"
-    ].replace(0, pd.NA)
-
-    return summary.sort_values("total", ascending=False)
+    return out
 
 
-def merge_covered_with_benchmarking(
-    covered_df: pd.DataFrame,
-    benchmark_df: pd.DataFrame,
-    data_year_col: str = "Data Year",
-    status_col: str = "Reporting Status",
-    missing_label: str = "Not present in data",
-    id_col: str = "ID",
+def _normalize_colname(name: str) -> str:
+    """Normalize a column name for matching (lowercase, remove symbols/spaces)."""
+    s = name.strip().lower()
+    s = re.sub(r"[^\w]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def coalesce_columns(
+    df: pd.DataFrame,
+    groups: dict[str, list[str]],
+    *,
+    drop_sources: bool = True,
 ) -> pd.DataFrame:
-    """Add synthetic rows for covered buildings that do not appear in the benchmarking data for each year.
+    """Create canonical columns by taking first non-null across source columns."""
+    out = df.copy()
 
-    Parameters
-    ----------
-    covered_df : pd.DataFrame
-        Covered buildings dataset containing all buildings that should benchmark
-        (one row per covered building, with at least `Building ID`, address, ZIP,
-        community area, and location metadata).
-    benchmark_df : pd.DataFrame
-        Benchmarking dataset containing buildings that actually reported for one
-        or more years (may have multiple rows per building across years).
-    data_year_col : str, optional
-        Name of the column in `benchmark_df` and the output that stores the data year,
-        by default "Data Year".
-    status_col : str, optional
-        Name of the reporting status column in `benchmark_df` and the output,
-        by default "Reporting Status".
-    missing_label : str, optional
-        Status label to assign to synthetic rows for covered buildings that do not
-        appear in the benchmarking data for a given year, by default
-        "Not present in data".
-    id_col : str, optional
-        Column name to use as the standardized building identifier in both dataframes.
-        In `covered_df` this is expected as "Building ID" and will be renamed;
-        in `benchmark_df` this is expected as "ID" and will be renamed, by default "ID".
+    for target, sources in groups.items():
+        existing = [c for c in sources if c in out.columns]
+        if not existing:
+            continue
 
     Returns:
     -------
@@ -1426,40 +1437,23 @@ def merge_covered_with_benchmarking(
         "Top Level Property Type": "Top Level Property Type",
     }
 
-    years = sorted(benchmark_df[data_year_col].drop_duplicates())
-    result = benchmark_df.copy()
-    total_added = 0
+    out = df.copy()
 
-    for year in years:
-        # Benchmarking IDs this year ONLY
-        year_mask = (result[data_year_col] == year) & result[id_col].notna()
-        year_ids = set(result.loc[year_mask, id_col].unique())
+    # Fix the one common typo in your list
+    if (
+        "Cooresponding Campus ID" in out.columns
+        and "Corresponding Campus ID" not in out.columns
+    ):
+        out = out.rename(columns={"Cooresponding Campus ID": "Corresponding Campus ID"})
 
-        # ALL covered buildings absent this year (NO drop_duplicates)
-        absent_covered = covered_df[~covered_df[id_col].isin(year_ids)].copy()
+    out = coalesce_columns(out, groups, drop_sources=True)
 
-        num_new = len(absent_covered)
-        if num_new == 0:
-            continue
+    # Optional: strip whitespace in key string fields
+    for col in ["Property Name", "Address", "ZIP", "Primary Property Type"]:
+        if col in out.columns:
+            out[col] = out[col].astype(str).str.strip().replace({"nan": pd.NA})
 
-        # Create rows matching covered shape exactly
-        new_rows = pd.DataFrame(np.nan, index=absent_covered.index, columns=bench_cols)
-        new_rows[data_year_col] = year
-        new_rows[status_col] = missing_label
-        new_rows[id_col] = absent_covered[id_col]
-
-        # Map ALL available columns
-        for cov_col, bench_col in map_cols.items():
-            if cov_col in covered_df.columns:
-                new_rows[bench_col] = absent_covered[cov_col]
-
-        result = pd.concat([result, new_rows], ignore_index=True)
-        total_added += num_new
-        print(f"Year {year}: added {num_new} rows")
-
-    print(f"✅ Total added: {total_added} rows across all years")
-    return result
-
+    return out
 
 def merge_covered_with_benchmarking_new(
     covered_df: pd.DataFrame,
@@ -1621,126 +1615,116 @@ def add_reporting_compliance_flags(
 ) -> pd.DataFrame:
     """Standardize reporting status and add compliance flags for 2018+ records.
 
-    Parameters
-    ----------
-    benchmark_df : pd.DataFrame
-        Full benchmarking dataset containing at least a year column and a reporting
-        status column. May include records from years before and after 2018.
-    year_col : str, optional
-        Name of the column indicating the data year for each record, by default
-        "Data Year".
-    status_col : str, optional
-        Name of the column containing the original reporting status text
-        (e.g., "Submitted", "Not Submitted", "Exempt", "Submitted Data"),
-        by default "Reporting Status".
+def boston_to_chicago(boston_df: pd.DataFrame) -> pd.DataFrame:
+    """Map Boston benchmarking data into Chicago's schema.
 
-    Returns:
-    -------
-    pd.DataFrame
-        Copy of the input dataframe filtered to `MIN_COMPLIANCE_YEAR` and later,
-        with a cleaned/normalized reporting status column and the following
-        boolean flag columns added:
-
-        - `SubmittedFlag`: True if cleaned status equals "submitted".
-        - `ExemptFlag`: True if cleaned status equals "exempt".
-        - `NotSubmittedFlag`: True if cleaned status equals "not submitted".
-        - `NonCompliantFlag`: True if status is "not submitted" and not exempt
-          (i.e., counted as non‑compliant for ordinance purposes).
+    Boston input is your harmonized Boston dataset (after harmonize_boston_columns),
+    with columns like: Property Name, Address, ZIP, BERDO ID, Primary Property Type,
+    Gross Floor Area (sq ft), Site EUI (kBtu/sq ft), ENERGY STAR Score,
+    Electricity Usage (kBtu), Natural Gas Usage (kBtu), District Steam Usage (kBtu),
+    District Chilled Water Usage (kBtu), Fuel Oil * Usage (kBtu), etc.
     """
-    compliance_df = benchmark_df.copy()
+    out = pd.DataFrame(index=boston_df.index)
 
-    # Only keep MIN_COMPLIANCE_YEAR+ for these analyses
-    compliance_df = compliance_df[compliance_df[year_col] >= MIN_COMPLIANCE_YEAR].copy()
+    # Required Chicago identifiers
+    out["Data Year"] = pd.to_numeric(
+        boston_df.get("Data Year"), errors="coerce"
+    ).astype("Int64")
+    out["ID"] = boston_df.get("BERDO ID").combine_first(boston_df.get("Tax Parcel ID"))
+    out["Property Name"] = boston_df.get("Property Name")
+    out["Address"] = boston_df.get("Address")
+    out["ZIP Code"] = boston_df.get("ZIP")
+    out["Community Area"] = pd.NA
+    out["Primary Property Type"] = boston_df.get("Primary Property Type")
 
-    # Clean and normalize status
-    compliance_df[status_col] = (
-        compliance_df[status_col]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        .replace("submitted data", "submitted")
+    # Buildings / floor area
+    out["Gross Floor Area - Buildings (sq ft)"] = pd.to_numeric(
+        boston_df.get("Gross Floor Area (sq ft)"),
+        errors="coerce",
+    )
+    out["Year Built"] = pd.to_numeric(
+        boston_df.get("Year Built"), errors="coerce"
+    ).astype("Int64")
+    out["# of Buildings"] = pd.NA
+
+    # ENERGY STAR + EUI
+    out["ENERGY STAR Score"] = pd.to_numeric(
+        boston_df.get("ENERGY STAR Score"),
+        errors="coerce",
+    ).astype("Int64")
+
+    out["Site EUI (kBtu/sq ft)"] = pd.to_numeric(
+        boston_df.get("Site EUI (kBtu/sq ft)"),
+        errors="coerce",
+    )
+    out["Source EUI (kBtu/sq ft)"] = pd.NA
+    out["Weather Normalized Site EUI (kBtu/sq ft)"] = pd.NA
+    out["Weather Normalized Source EUI (kBtu/sq ft)"] = pd.NA
+
+    # Energy by fuel (kBtu)
+    out["Electricity Use (kBtu)"] = pd.to_numeric(
+        boston_df.get("Electricity Usage (kBtu)"),
+        errors="coerce",
+    )
+    out["Natural Gas Use (kBtu)"] = pd.to_numeric(
+        boston_df.get("Natural Gas Usage (kBtu)"),
+        errors="coerce",
+    )
+    out["District Steam Use (kBtu)"] = pd.to_numeric(
+        boston_df.get("District Steam Usage (kBtu)"),
+        errors="coerce",
+    )
+    out["District Chilled Water Use (kBtu)"] = pd.to_numeric(
+        boston_df.get("District Chilled Water Usage (kBtu)"),
+        errors="coerce",
     )
 
-    # Basic flags
-    compliance_df["SubmittedFlag"] = compliance_df[status_col].eq("submitted")
-    compliance_df["ExemptFlag"] = compliance_df[status_col].eq("exempt")
-    compliance_df["NotSubmittedFlag"] = compliance_df[status_col].eq("not submitted")
+    # Chicago has "All Other Fuel Use" (Boston has several components)
+    other_fuels = [
+        "District Hot Water Usage (kBtu)",
+        "Fuel Oil 1 Usage (kBtu)",
+        "Fuel Oil 2 Usage (kBtu)",
+        "Fuel Oil 4 Usage (kBtu)",
+        "Fuel Oil 5 and 6 Usage (kBtu)",
+        "Propane Usage (kBtu)",
+        "Diesel Usage (kBtu)",
+        "Kerosene Usage (kBtu)",
+        "Renewable System Electricity Usage Onsite (kBtu)",
+    ]
 
-    # Overall non‑compliance flag: not submitted and not exempt
-    compliance_df["NonCompliantFlag"] = (
-        compliance_df["NotSubmittedFlag"] & ~compliance_df["ExemptFlag"]
+    present = [c for c in other_fuels if c in boston_df.columns]
+    if present:
+        other_numeric = boston_df[present].apply(pd.to_numeric, errors="coerce")
+        out["All Other Fuel Use (kBtu)"] = other_numeric.sum(axis=1, min_count=1)
+    else:
+        out["All Other Fuel Use (kBtu)"] = pd.NA
+
+    # GHG
+    out["Total GHG Emissions (Metric Tons CO2e)"] = pd.to_numeric(
+        boston_df.get("GHG Emissions (MTCO2e)"),
+        errors="coerce",
+    )
+    out["GHG Intensity (kg CO2e/sq ft)"] = pd.to_numeric(
+        boston_df.get("GHG Intensity (kgCO2e/sq ft)"),
+        errors="coerce",
     )
 
-    return compliance_df
+    # Location fields (not in Boston)
+    out["Latitude"] = pd.NA
+    out["Longitude"] = pd.NA
+    out["Location"] = pd.NA
 
+    # Status / ratings
+    out["Reporting Status"] = boston_df.get(
+        "Reporting Compliance Status"
+    ).combine_first(boston_df.get("Compliance Status"))
+    out["Chicago Energy Rating"] = pd.NA
+    out["Exempt From Chicago Energy Rating"] = pd.NA
 
-def add_top_level_property_type(
-    benchmark_df: pd.DataFrame,
-    source_col: str = "Primary Property Type",
-    target_col: str = "Top Level Property Type",
-) -> pd.DataFrame:
-    """Create a 4‑bucket top‑level property type column from detailed property types.
+    # Water (Chicago is kGal; Boston is intensity, not total)
+    out["Water Use (kGal)"] = pd.NA
 
-    Parameters
-    ----------
-    benchmark_df : pd.DataFrame
-        DataFrame containing building‑level records with a detailed property type
-        column (e.g., cleaned Portfolio Manager `Primary Property Type`).
-    source_col : str, optional
-        Name of the column in `benchmark_df` that holds the detailed property type
-        values to be grouped, by default "Primary Property Type".
-    target_col : str, optional
-        Name of the new column to be added to `benchmark_df` containing the
-        top‑level classification ("Residential", "Commercial", "Municipal", or "Other"),
-        by default "Top Level Property Type".
+    # Row id (not in Boston)
+    out["Row_ID"] = pd.NA
 
-    Returns:
-    -------
-    pd.DataFrame
-        Copy of `benchmark_df` with an additional `target_col` where each row's
-        detailed property type is mapped into one of four buckets:
-
-        - "Residential": multifamily housing, residential, hotel, senior care community,
-          residence hall/dormitory, mixed use property.
-        - "Commercial": office, retail store, commercial, supermarket/grocery store,
-          mall, strip mall, medical office, laboratory, hospital (general medical & surgical).
-        - "Municipal": k‑12 school, college/university.
-        - "Other": any type not explicitly listed in the mapping or missing.
-    """
-    mapping = {
-        # Residential
-        "multifamily housing": "Residential",
-        "residential": "Residential",
-        "hotel": "Residential",
-        "senior care community": "Residential",
-        "residence hall/dormitory": "Residential",
-        "mixed use property": "Residential",
-        # Commercial
-        "office": "Commercial",
-        "retail store": "Commercial",
-        "commercial": "Commercial",
-        "supermarket/grocery store": "Commercial",
-        "mall": "Commercial",
-        "strip mall": "Commercial",
-        "medical office": "Commercial",
-        "laboratory": "Commercial",
-        "hospital (general medical & surgical)": "Commercial",
-        # Municipal
-        "k-12 school": "Municipal",
-        "college/university": "Municipal",
-        # Other (already "other")
-        "other": "Other",
-    }
-
-    result_df = benchmark_df.copy()
-
-    def classify_top_level(raw_type: object) -> str:
-        if pd.isna(raw_type):
-            return "Other"
-        key = str(raw_type).strip().lower()
-        return mapping.get(key, "Other")
-
-    result_df[target_col] = result_df[source_col].apply(classify_top_level)
-
-    return result_df
+    return out

@@ -48,49 +48,145 @@ PVAL_THRESHOLDS = (0.01, 0.05, 0.1)
 # -----------------------------------------------------------------------------
 # Data preparation
 # -----------------------------------------------------------------------------
-def prepare_did_data(data: pd.DataFrame) -> pd.DataFrame:
+
+
+def prepare_did_data(
+    data: pd.DataFrame,
+    *,
+    mode: str = "chicago_low_rating",
+    post_start_year: int | None = None,
+    treated_city: str = "Chicago",
+    outcome_col: str | None = None,
+) -> pd.DataFrame:
     """Prepare dataset for Difference-in-Differences (DiD) analysis.
 
-    Adds:
-        - Post: 1 if Data Year >= 2019 (post-placard policy), else 0
-        - LowRating: 1 if Chicago Energy Rating <= 2 (treated group), else 0
-        - Interaction: Post * LowRating (the DiD term)
-        - ln_FloorArea: natural log of Gross Floor Area
-        - ln_GHG: log(1 + Total GHG Emissions)
+    Backward-compatible:
+    - Default mode ("chicago_low_rating") matches your old notebooks:
+        Post = 1{Data Year >= POLICY_YEAR}
+        LowRating = 1{Chicago Energy Rating <= LOW_RATING_THRESHOLD}
+        Interaction = Post * LowRating
+        ln_FloorArea, ln_GHG are created.
+
+    New mode:
+    - mode="multicity" for pooled city comparison (Chicago vs other cities):
+        Post = 1{Data Year >= post_start_year}  (recommended: 2020)
+        LowRating = 1{City == treated_city}     (kept name for compatibility)
+        Interaction = Post * LowRating
+        ln_FloorArea created.
+        If outcome_col is provided, it is coerced to numeric as well.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Clean energy dataset with required columns.
+    data:
+        Input dataframe.
+    mode:
+        "chicago_low_rating" (default) or "multicity".
+    post_start_year:
+        Only used for mode="multicity". If None, defaults to 2020.
+    treated_city:
+        Only used for mode="multicity".
+    outcome_col:
+        Optional outcome column to coerce to numeric (useful for multicity Site EUI).
 
     Returns:
     -------
     pd.DataFrame
-        Copy with added DiD-related columns.
+        Copy with DiD columns added and dtypes cleaned for statsmodels.
     """
-    clean_data = data.copy()
-    clean_data = clean_data.dropna(
-        subset=[
-            "Total GHG Emissions (Metric Tons CO2e)",
-            "Gross Floor Area - Buildings (sq ft)",
-            "Chicago Energy Rating",
-            "Data Year",
-        ]
-    )
+    clean = data.copy()
 
-    clean_data["Post"] = (clean_data["Data Year"] >= POLICY_YEAR).astype(int)
-    clean_data["LowRating"] = (
-        clean_data["Chicago Energy Rating"] <= LOW_RATING_THRESHOLD
-    ).astype(int)
-    clean_data["Interaction"] = clean_data["Post"] * clean_data["LowRating"]
-    clean_data["ln_FloorArea"] = np.log(
-        clean_data["Gross Floor Area - Buildings (sq ft)"]
-    )
-    clean_data["ln_GHG"] = np.log1p(
-        clean_data["Total GHG Emissions (Metric Tons CO2e)"]
-    )
+    # ---- Common columns: coerce year and floor area when available ----
+    if "Data Year" in clean.columns:
+        clean["Data Year"] = pd.to_numeric(clean["Data Year"], errors="coerce")
 
-    return clean_data
+    if "Gross Floor Area - Buildings (sq ft)" in clean.columns:
+        clean["Gross Floor Area - Buildings (sq ft)"] = pd.to_numeric(
+            clean["Gross Floor Area - Buildings (sq ft)"], errors="coerce"
+        )
+
+    if outcome_col is not None and outcome_col in clean.columns:
+        clean[outcome_col] = pd.to_numeric(clean[outcome_col], errors="coerce")
+
+    # ==================================================================
+    # Mode 1 (default): Chicago-only treated = low Chicago Energy Rating
+    # ==================================================================
+    if mode == "chicago_low_rating":
+        clean = clean.dropna(
+            subset=[
+                "Total GHG Emissions (Metric Tons CO2e)",
+                "Gross Floor Area - Buildings (sq ft)",
+                "Chicago Energy Rating",
+                "Data Year",
+            ]
+        ).copy()
+
+        clean["Post"] = (clean["Data Year"] >= POLICY_YEAR).astype("int64")
+        clean["LowRating"] = (
+            clean["Chicago Energy Rating"] <= LOW_RATING_THRESHOLD
+        ).astype("int64")
+        clean["Interaction"] = (clean["Post"] * clean["LowRating"]).astype("int64")
+
+        clean["ln_FloorArea"] = np.log(clean["Gross Floor Area - Buildings (sq ft)"])
+        clean["ln_GHG"] = np.log1p(clean["Total GHG Emissions (Metric Tons CO2e)"])
+
+        # dtype hygiene for statsmodels/patsy
+        clean["Data Year"] = clean["Data Year"].astype("int64")
+        clean["Primary Property Type"] = clean["Primary Property Type"].astype("object")
+
+        return clean
+
+    # ==========================================================
+    # Mode 2: Multi-city DiD (treated city vs other cities)
+    # ==========================================================
+    if mode == "multicity":
+        if post_start_year is None:
+            post_start_year = 2020
+
+        clean = clean.dropna(
+            subset=[
+                "City",
+                "Gross Floor Area - Buildings (sq ft)",
+                "Data Year",
+                "Primary Property Type",
+            ]
+            + ([outcome_col] if outcome_col is not None else [])
+        ).copy()
+
+        clean["Post"] = (clean["Data Year"] >= post_start_year).astype("int64")
+        clean["LowRating"] = (clean["City"] == treated_city).astype("int64")
+        clean["Interaction"] = (clean["Post"] * clean["LowRating"]).astype("int64")
+
+        clean["ln_FloorArea"] = np.log(clean["Gross Floor Area - Buildings (sq ft)"])
+
+        # dtype hygiene for statsmodels/patsy
+        clean["Data Year"] = clean["Data Year"].astype("int64")
+        clean["City"] = clean["City"].astype("object")
+        clean["Primary Property Type"] = (
+            clean["Primary Property Type"].astype(str).str.strip().str.lower()
+        )
+
+        if outcome_col is not None and outcome_col in clean.columns:
+            clean[outcome_col] = clean[outcome_col].astype("float64")
+
+        clean["ln_FloorArea"] = pd.to_numeric(
+            clean["ln_FloorArea"], errors="coerce"
+        ).astype("float64")
+
+        clean = clean.dropna(
+            subset=[
+                "Post",
+                "LowRating",
+                "Interaction",
+                "ln_FloorArea",
+                "Data Year",
+                "Primary Property Type",
+            ]
+            + ([outcome_col] if outcome_col is not None else [])
+        ).copy()
+
+        return clean
+
+    raise ValueError(f"Unknown mode: {mode}")
 
 
 # -----------------------------------------------------------------------------
@@ -253,3 +349,175 @@ def generate_descriptive_stats_by_year(df: pd.DataFrame) -> pd.DataFrame:
     grouped_stats.index.names = ["Variable", "Statistic"]
 
     return grouped_stats
+
+
+def build_multi_city_did_df(
+    chicago_df: pd.DataFrame,
+    other_city_dfs: dict[str, pd.DataFrame],
+    *,
+    start_year: int = 2016,
+    end_year: int = 2023,
+    post_start_year: int = 2020,
+    treated_city: str = "Chicago",
+    city_col: str = "City",
+    year_col: str = "Data Year",
+    outcome_col: str = "Site EUI (kBtu/sq ft)",
+    floor_area_col: str = "Gross Floor Area - Buildings (sq ft)",
+    ptype_col: str = "Primary Property Type",
+    chicago_city_value: str | None = "Chicago",
+    ensure_city_values: bool = True,
+    dropna_required: bool = True,
+) -> pd.DataFrame:
+    """Build a pooled multi-city DiD dataframe.
+
+    Creates a single stacked dataset across cities and constructs:
+      - Post: 1{year >= post_start_year}
+      - LowRating: 1{City == treated_city}  (kept for backward-compatibility)
+      - Interaction: Post * LowRating
+      - ln_FloorArea: log(floor_area)
+
+    Parameters
+    ----------
+    chicago_df:
+        Chicago dataframe (may be concurrent_df or a cleaned variant).
+    other_city_dfs:
+        Dict of {city_name: df}. If ensure_city_values=True, the key is written to df[city_col]
+        unless df already has city_col and chicago_city_value is None (see below).
+    start_year, end_year:
+        Year window filter applied after concatenation.
+    post_start_year:
+        "Post" period start; per your convention use 2020 to reflect 2019 reporting.
+    treated_city:
+        City value treated as "treated" for LowRating (default "Chicago").
+    city_col, year_col, outcome_col, floor_area_col, ptype_col:
+        Column names to use.
+    chicago_city_value:
+        If not None, writes this value into chicago_df[city_col] before concatenation.
+        Set to None if chicago_df already has the correct City field and you don't want to overwrite it.
+    ensure_city_values:
+        If True, force-set each city's df[city_col] to the dict key (and set Chicago to chicago_city_value).
+    dropna_required:
+        If True, drop rows missing variables required for regression.
+
+    Returns:
+    -------
+    pd.DataFrame
+        Cleaned DiD-ready dataframe.
+    """
+    frames: list[pd.DataFrame] = []
+
+    chi = chicago_df.copy()
+    if ensure_city_values and chicago_city_value is not None:
+        chi[city_col] = chicago_city_value
+    frames.append(chi)
+
+    for city_name, df in other_city_dfs.items():
+        dfx = df.copy()
+        if ensure_city_values:
+            dfx[city_col] = city_name
+        frames.append(dfx)
+
+    did_df = pd.concat(frames, ignore_index=True)
+
+    did_df[year_col] = pd.to_numeric(did_df[year_col], errors="coerce")
+    did_df = did_df[did_df[year_col].between(start_year, end_year)].copy()
+
+    did_df["Post"] = (did_df[year_col] >= post_start_year).astype(int)
+    did_df["LowRating"] = (did_df[city_col] == treated_city).astype(int)
+    did_df["Interaction"] = did_df["Post"] * did_df["LowRating"]
+
+    floor_area = pd.to_numeric(did_df[floor_area_col], errors="coerce")
+    did_df["ln_FloorArea"] = np.log(floor_area)
+
+    did_df[outcome_col] = pd.to_numeric(did_df[outcome_col], errors="coerce")
+
+    if dropna_required:
+        did_df = did_df.dropna(
+            subset=[
+                outcome_col,
+                "ln_FloorArea",
+                ptype_col,
+                year_col,
+                city_col,
+            ]
+        ).copy()
+
+    return did_df
+
+
+def filter_property_type(df: pd.DataFrame, kind: str) -> pd.DataFrame:
+    """Filter dataframe to office or multifamily rows using Primary Property Type."""
+    if "Primary Property Type" not in df.columns:
+        raise KeyError("Expected column 'Primary Property Type' not found.")
+
+    s = df["Primary Property Type"].astype(str).str.strip().str.lower()
+
+    if kind == "office":
+        mask = s.str.contains(r"\boffice\b", regex=True)
+
+    elif kind == "multifamily":
+        # catches: multifamily, multi-family, apartment, residential, housing, dorm etc.
+        mask = s.str.contains(
+            r"multi[-\s]?family|apartment|residential|housing|dorm|student housing",
+            regex=True,
+        )
+    else:
+        raise ValueError("kind must be 'office' or 'multifamily'")
+
+    return df.loc[mask].copy()
+
+
+def prep_for_did_levels(df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare df for level (no-log) DiD regression with statsmodels-safe dtypes."""
+    out = df.copy()
+
+    required = [
+        "Site EUI (kBtu/sq ft)",
+        "Post",
+        "LowRating",
+        "Interaction",
+        "ln_FloorArea",
+        "Data Year",
+        "Primary Property Type",
+    ]
+    missing = [c for c in required if c not in out.columns]
+    if missing:
+        raise KeyError(f"Missing required columns for DiD prep: {missing}")
+
+    # outcome
+    out["Site EUI (kBtu/sq ft)"] = pd.to_numeric(
+        out["Site EUI (kBtu/sq ft)"], errors="coerce"
+    ).astype("float64")
+
+    # did vars as plain int64 (NOT pandas nullable Int64)
+    for c in ["Post", "LowRating", "Interaction"]:
+        out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0).astype("int64")
+
+    # controls
+    out["ln_FloorArea"] = pd.to_numeric(out["ln_FloorArea"], errors="coerce").astype(
+        "float64"
+    )
+
+    # year as plain int64 (important for patsy)
+    out["Data Year"] = pd.to_numeric(out["Data Year"], errors="coerce")
+    out = out.dropna(subset=["Data Year"])
+    out["Data Year"] = out["Data Year"].astype("int64")
+
+    # categoricals
+    out["Primary Property Type"] = (
+        out["Primary Property Type"].astype(str).str.strip().str.lower()
+    )
+    if "City" in out.columns:
+        out["City"] = out["City"].astype("object")
+
+    # drop missing essentials
+    out = out.dropna(
+        subset=[
+            "Site EUI (kBtu/sq ft)",
+            "ln_FloorArea",
+            "Primary Property Type",
+            "Data Year",
+        ]
+    ).copy()
+
+    return out

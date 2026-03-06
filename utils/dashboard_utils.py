@@ -11,14 +11,19 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from utils.data_utils import (
+    add_compliance_status,
+    add_top_level_property_type,
     assign_effective_year_built,
     categorize_time_built,
     clean_property_type,
     clean_year_built,
     concurrent_buildings,
+    covered_assign_top_types,
     load_community_geojson,
+    load_covered_buildings,
     load_data,
     load_neighborhood_geojson,
+    merge_covered_with_benchmarking_new,
 )
 from utils.plot_utils import (
     aggregate_metric,
@@ -78,6 +83,20 @@ def cache_energy_data() -> pd.DataFrame:
 
 
 @st.cache_data
+def cache_covered_buildings() -> pd.DataFrame:
+    """Load and cache the Covered Buildings dataset for dashboard use.
+
+    - Loads raw covered buildings data
+    - Standardizes Community Area formatting
+    - Assigns Top Level Property Type
+    """
+    covered_df = load_covered_buildings()
+    covered_df = covered_assign_top_types(covered_df)
+
+    return covered_df
+
+
+@st.cache_data
 def cache_geojson(tolerance: float = 0.00259) -> dict:
     """Caching geojson data.
 
@@ -120,6 +139,46 @@ def cache_community_geojson(tolerance: float = 0.00259) -> dict:
     )
 
     return json.loads(gdf.to_json())
+
+
+@st.cache_data(show_spinner=False)
+def cache_full_data_prepped(
+    energy_cols: list[str],
+    reporting_status_col: str = "Reporting Status",
+    default_year: int | None = 2018,
+) -> tuple[pd.DataFrame, list[int]]:
+    """Load + clean + merge + derive columns needed for dashboard pages."""
+    energy_df = cache_full_data()
+    energy_df = clean_property_type(energy_df)
+    energy_df = clean_year_built(energy_df)
+    energy_df = assign_effective_year_built(energy_df)
+    energy_df = add_top_level_property_type(benchmark_df=energy_df)
+
+    covered_df = cache_covered_buildings()
+    covered_df = covered_assign_top_types(covered_df)
+
+    full_data = merge_covered_with_benchmarking_new(
+        covered_df=covered_df,
+        benchmark_df=energy_df,
+        verbose=False,
+    )
+
+    full_data = add_compliance_status(
+        full_data,
+        energy_cols=energy_cols,
+        reporting_status_col=reporting_status_col,
+        inplace=False,
+    )
+
+    full_data = categorize_time_built(full_data)
+
+    years_list = sorted(
+        [int(y) for y in full_data["Data Year"].dropna().unique().tolist()]
+    )
+
+    _ = default_year  # kept for future use if you want to enforce ordering
+
+    return full_data, years_list
 
 
 @st.cache_data

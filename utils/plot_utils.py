@@ -2062,10 +2062,15 @@ def plot_compliance_status_facets(
     n_exempt_col: str,
     n_not_submitted_col: str,
 ) -> alt.Chart:
+    """Create a horizontally concatenated stacked bar chart of reporting status by year and group.
+
+    The chart shows one panel per year (side by side), with bars grouped by
+    `group_col` on the x-axis and stacked by reporting status
+    ("Submitted", "Exempt", "Not submitted") with counts on the y-axis.
+    """
     if df.empty:
         return alt.Chart().mark_bar()
 
-    # Melt to long format (unchanged)
     df_long = df.rename(
         columns={
             n_submitted_col: "Submitted",
@@ -2079,37 +2084,37 @@ def plot_compliance_status_facets(
         value_name="Count",
     )
 
-    # Base for shared encodings
-    base = alt.Chart(df_long).encode(
-        x=alt.X(f"{group_col}:N", title=group_col),  # Shared x-axis
-        y=alt.Y("Count:Q", title="Number of buildings"),
-        color=alt.Color(
-            "Status:N",
-            title="Reporting Status",
-            scale=alt.Scale(
-                domain=["Submitted", "Exempt", "Not submitted"],
-                range=["#1f77b4", "#2ca02c", "#d62728"],
+    base = (
+        alt.Chart(df_long)
+        .encode(
+            x=alt.X(f"{group_col}:N", title=group_col),
+            y=alt.Y("Count:Q", title="Number of buildings"),
+            color=alt.Color(
+                "Status:N",
+                title="Reporting Status",
+                scale=alt.Scale(
+                    domain=["Submitted", "Exempt", "Not submitted"],
+                    range=["#1f77b4", "#2ca02c", "#d62728"],
+                ),
             ),
-        ),
-        tooltip=[  # Unchanged
-            alt.Tooltip(f"{year_col}:O", title="Year"),
-            alt.Tooltip(f"{group_col}:N", title=group_col),
-            alt.Tooltip("Status:N"),
-            alt.Tooltip("Count:Q", title="Buildings"),
-        ],
-    ).mark_bar().properties(height=250)
+            tooltip=[
+                alt.Tooltip(f"{year_col}:O", title="Year"),
+                alt.Tooltip(f"{group_col}:N", title=group_col),
+                alt.Tooltip("Status:N"),
+                alt.Tooltip("Count:Q", title="Buildings"),
+            ],
+        )
+        .mark_bar()
+        .properties(height=250)
+    )
 
-    # Get unique years and create side-by-side panels
     years = sorted(df[year_col].unique())
     panels = []
     for year in years:
-        year_data = df_long[df_long[year_col] == year]
-        panel = base.transform_filter(
-            alt.datum[year_col] == year
-        ).properties(title=str(year))
+        panel = base.transform_filter(alt.datum[year_col] == year).properties(
+            title=str(year)
+        )
         panels.append(panel)
 
     chart = alt.hconcat(*panels, title=alt.TitleParams("Data Year"))
     return chart
-
-  

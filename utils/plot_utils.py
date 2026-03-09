@@ -2055,45 +2055,17 @@ def plot_compliance_rate_over_time(
 
 
 def plot_compliance_status_facets(
-    df: pd.DataFrame,
+    df: pd.DataFrame,  # wide format: one row per (year, group)
     year_col: str,
     group_col: str,
     n_submitted_col: str,
     n_exempt_col: str,
     n_not_submitted_col: str,
 ) -> alt.Chart:
-    """Faceted stacked bar chart of counts by reporting status.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Aggregated dataframe with one row per (year, group), containing counts of
-        buildings by reporting status.
-    year_col : str
-        Column name holding the year values used for faceting (e.g., "Data Year").
-    group_col : str
-        Column name used on the x‑axis to group buildings (e.g., property type,
-        community area).
-    n_submitted_col : str
-        Column name in `df` with the count of submitted buildings for each
-        (year, group).
-    n_exempt_col : str
-        Column name in `df` with the count of exempt buildings for each
-        (year, group).
-    n_not_submitted_col : str
-        Column name in `df` with the count of non‑submitted buildings for each
-        (year, group).
-
-    Returns:
-    -------
-    alt.Chart
-        Altair faceted stacked bar chart where each facet represents a year,
-        the x‑axis shows `group_col`, and bars are stacked by reporting status
-        ("Submitted", "Exempt", "Not submitted") with counts on the y‑axis.
-    """
     if df.empty:
-        return alt.Chart(pd.DataFrame({group_col: [], year_col: []})).mark_bar()
+        return alt.Chart().mark_bar()
 
+    # Melt to long format (unchanged)
     df_long = df.rename(
         columns={
             n_submitted_col: "Submitted",
@@ -2107,8 +2079,9 @@ def plot_compliance_status_facets(
         value_name="Count",
     )
 
+    # Base for shared encodings
     base = alt.Chart(df_long).encode(
-        x=alt.X(f"{group_col}:N", title=group_col),
+        x=alt.X(f"{group_col}:N", title=group_col),  # Shared x-axis
         y=alt.Y("Count:Q", title="Number of buildings"),
         color=alt.Color(
             "Status:N",
@@ -2118,23 +2091,25 @@ def plot_compliance_status_facets(
                 range=["#1f77b4", "#2ca02c", "#d62728"],
             ),
         ),
-        tooltip=[
+        tooltip=[  # Unchanged
             alt.Tooltip(f"{year_col}:O", title="Year"),
             alt.Tooltip(f"{group_col}:N", title=group_col),
-            alt.Tooltip("Status:N", title="Status"),
+            alt.Tooltip("Status:N"),
             alt.Tooltip("Count:Q", title="Buildings"),
         ],
-    )
+    ).mark_bar().properties(height=250)
 
-    chart = (
-        base.mark_bar()
-        .properties(height=250)
-        .facet(
-            column=alt.Column(
-                f"{year_col}:O",
-                title="Data Year",
-            )
-        )
-    )
+    # Get unique years and create side-by-side panels
+    years = sorted(df[year_col].unique())
+    panels = []
+    for year in years:
+        year_data = df_long[df_long[year_col] == year]
+        panel = base.transform_filter(
+            alt.datum[year_col] == year
+        ).properties(title=str(year))
+        panels.append(panel)
 
+    chart = alt.hconcat(*panels, title=alt.TitleParams("Data Year"))
     return chart
+
+  

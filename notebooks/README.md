@@ -25,3 +25,6 @@ Within fix_effects_notebooks: Folder was made to group fixed effect testing
 * `time_series_features.ipynb` Using the naive time series model and added more features to better understand what explains energy use
 * `time_series_local_change.ipynb` Created a new variable to better capture a buildings energy use in comparisons to the city trend
 * `time_series_local_change_interaction.ipynb` Used the time series local change model to explore which features of a building explains the buildings energy trends
+* `cities_vs_chicago_I.ipynb` contains exploratory comparison of Chicago energy trends with peer cities, including initial data preparation and visualizations of cross-city Site EUI patterns.
+* `city_vs_chicago_II.ipynb` contains extended analysis comparing Chicago with other major cities, including trend visualizations and preliminary difference-in-differences exploration.
+* `four_cities_comparison.ipynb` contains comparative analysis of energy use trends across Chicago and three peer cities, including visualizations of Site EUI changes and cross-city trend comparisons used to support the difference-in-differences analysis.

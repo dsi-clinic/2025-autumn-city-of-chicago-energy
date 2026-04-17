@@ -136,7 +136,40 @@ st.divider()
 st.markdown("## Chicago Energy Benchmarking Dataset")
 st.markdown("#### Buildings with Complete Data (2016-2023)")
 
-st.dataframe(core_dataframe)
+# -------------------- Dataset Summary Metrics --------------------
+# Calculate key statistics for the dataset
+if not core_dataframe.empty:
+    total_buildings = core_dataframe["ID"].nunique() if "ID" in core_dataframe.columns else len(core_dataframe)
+    years_covered = sorted(core_dataframe["Data Year"].unique()) if "Data Year" in core_dataframe.columns else []
+    year_range = f"{min(years_covered)}–{max(years_covered)}" if years_covered else "N/A"
+    total_records = len(core_dataframe)
+    building_types = core_dataframe["Primary Property Type"].nunique() if "Primary Property Type" in core_dataframe.columns else "N/A"
+
+    # Display metrics in columns
+    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+    with metric_col1:
+        st.metric("Total Buildings", f"{total_buildings:,}")
+    with metric_col2:
+        st.metric("Year Range", year_range)
+    with metric_col3:
+        st.metric("Total Data Points", f"{total_records:,}")
+    with metric_col4:
+        st.metric("Building Types", building_types)
+
+    st.markdown("---")
+
+# -------------------- Interactive Data Table --------------------
+st.markdown(
+    "**💡 Tip:** Click column headers to sort, use search to filter, "
+    "or scroll to explore the full dataset."
+)
+
+st.dataframe(
+    core_dataframe,
+    use_container_width=True,
+    height=400,
+    hide_index=True,
+)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

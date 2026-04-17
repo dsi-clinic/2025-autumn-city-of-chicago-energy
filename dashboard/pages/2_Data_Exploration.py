@@ -39,26 +39,44 @@ if "playing" not in st.session_state:
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
 
-# Controls
-ctrl1, _, ctrl2, _, ctrl3, _, ctrl4, _ = st.columns([1, 0.1, 1, 0.1, 1, 0.1, 1, 4.5])
-with ctrl1:
-    log_scale = st.checkbox("Use Log Scale", value=False)
-with ctrl2:
+# -------------------- Animation Controls --------------------
+st.markdown("### 🎬 Map Animation Controls")
+st.markdown(
+    "Watch how building counts evolve across Chicago neighborhoods over time. "
+    "Use the controls below to play an animation or jump to a specific year."
+)
+
+ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 2, 6])
+
+with ctrl_col1:
+    # Play/Pause buttons with clear labels
+    if not st.session_state.playing:
+        if st.button("▶️  Play Animation", use_container_width=True, type="primary"):
+            st.session_state.playing = True
+    else:
+        if st.button("⏸️  Pause", use_container_width=True):
+            st.session_state.playing = False
+
+with ctrl_col2:
+    # Year selector
     selected_year = st.selectbox(
-        "Select Year:",
+        "Jump to Year",
         years_list,
         index=st.session_state.current_index,
         key="year_selector",
+        help="Select a specific year to display, or use Play to animate through all years",
     )
     if selected_year != years_list[st.session_state.current_index]:
         st.session_state.current_index = years_list.index(selected_year)
         st.session_state.playing = False
-with ctrl3:
-    if st.button("▶️ Play Animation"):
-        st.session_state.playing = True
-with ctrl4:
-    if st.button("⏸️ Pause Animation"):
-        st.session_state.playing = False
+
+with ctrl_col3:
+    # Display options
+    log_scale = st.checkbox(
+        "Use Logarithmic Scale",
+        value=False,
+        help="Apply log scale to better visualize areas with very different building counts",
+    )
 
 
 # Layout columns

@@ -23,6 +23,7 @@ from utils.dashboard_utils import (
     choose_compliance_metric,
     filter_energy_by_selections,
     load_clean_energy_data_for_dashboards,
+    show_helpful_filter_error,
 )
 from utils.data_utils import (
     add_reporting_compliance_flags,
@@ -130,77 +131,28 @@ and adds community-area **non-compliance maps** under the **same metric** select
         [int(y) for y in full_data["Data Year"].dropna().unique().tolist()]
     )
 
-    # -------------------- (1)-(2) Category selector + 4 filters (CHARTS ONLY) --------------------
-    category_col, sel_time_built, sel_ppt, sel_tlpt, sel_ca = build_standard_filters(
-        energy_df,
-        include_top_level=True,
-        page_prefix="combine",
-    )
-
-    # Apply the standard filter logic to the charts dataset
-    energy_df_filtered = filter_energy_by_selections(
-        energy_df,
-        sel_time_built=sel_time_built,
-        sel_ppt=sel_ppt,
-        sel_ca=sel_ca,
-        sel_tlpt=sel_tlpt,
-    )
-
-    if energy_df_filtered.empty:
-        st.warning(
-            "No buildings match the selected filters. Please broaden your selections."
-        )
-        st.stop()
-
-    MIN_YEARS_REQUIRED = 2
-    if energy_df_filtered["Data Year"].nunique() < MIN_YEARS_REQUIRED:
-        st.warning("Not enough years of data under these filters to evaluate trends.")
-        st.stop()
-
-    # -------------------- (3) Compliance metric --------------------
-    value_col, y_title = choose_compliance_metric()
-    metric_label = _pretty_metric_label(value_col, y_title)
-
-    # -------------------- (4) Category-value filter (All vs one class) --------------------
-    agg = aggregate_compliance_over_time(
-        energy_df=energy_df_filtered,
-        category_col=category_col,
-    )
-    agg_plot, selected_class = apply_category_filter(agg, category_col)
-
-    # -------------------- (5) Charts --------------------
-    st.subheader("Compliance trend over time")
-    st.altair_chart(
-        plot_compliance_rate_over_time(
-            df=agg_plot,
-            year_col="Data Year",
-            group_col=category_col,
-            value_col=value_col,
-            y_title=y_title,
-        ),
-        use_container_width=True,
-    )
-
-    st.subheader("Compliance distribution by category and year")
-    st.altair_chart(
-        plot_compliance_status_facets(
-            df=agg_plot,
-            year_col="Data Year",
-            group_col=category_col,
-            n_submitted_col="n_submitted",
-            n_exempt_col="n_exempt",
-            n_not_submitted_col="n_not_submitted",
-        ),
-        use_container_width=True,
+    # -------------------- (1) Category selector (used by both maps and charts) --------------------
+    st.subheader("Select Classification Category")
+    category_options = [
+        "Primary Property Type",
+        "Top-Level Property Type",
+        "Time Built",
+        "Community Area",
+    ]
+    category_col = st.selectbox(
+        "Classify buildings by:",
+        category_options,
+        index=0,
+        key="combine_category_col",
     )
 
     # ============================================================
-    # (6)-(8) Maps section (IGNORES the 4 small filters)
+    # (2)-(5) Maps section - DISPLAYED FIRST (ignores 4 small filters below)
     # ============================================================
     st.divider()
     st.subheader("Non-compliance maps (community area)")
 
-    # -------------------- (6) Map year selector --------------------
+    # -------------------- (2) Map year selector --------------------
     DEFAULT_YEAR = 2018
     default_year_index = (
         years_list.index(DEFAULT_YEAR)
@@ -223,19 +175,21 @@ and adds community-area **non-compliance maps** under the **same metric** select
         )
         st.stop()
 
+    # -------------------- (3) Compliance metric (shared with charts) --------------------
+    value_col, y_title = choose_compliance_metric()
+    metric_label = _pretty_metric_label(value_col, y_title)
+
     # -------------------- Build base + overall table --------------------
     base = build_compliance_base(df_year, year=int(map_year))
     area_overall = build_area_table_overall(base)
 
-    # -------------------- Metric for maps follows the chart metric --------------------
+    # -------------------- Metric for maps --------------------
     map_color_field, map_domain = _metric_to_map_field(value_col)
     if map_color_field not in area_overall.columns:
         map_color_field, map_domain = "share_non_compliant", (0.0, 1.0)
         metric_label = "Share non-compliant"
 
     # -------------------- Community Area special-case --------------------
-    # If the chosen category is Community Area, we cannot produce a "right map by category"
-    # because the choropleth is already grouped by community area.
     if category_col == "Community Area":
         st.info(
             "ℹ️ **Community Area selected**: the choropleth is already grouped by community area, "
@@ -267,76 +221,183 @@ and adds community-area **non-compliance maps** under the **same metric** select
         with st.expander("Show community-area table (overall)", expanded=False):
             st.dataframe(area_overall, use_container_width=True, height=350)
 
-        return
+    else:
+        # -------------------- (4) Group selector for maps --------------------
+        area_type = build_area_table_by_property(
+            base,
+            ptype_col=category_col,
+            status_col="compliance_status",
+        )
 
-    # -------------------- (7) Repeat group selector for maps (driven by category_col) --------------------
-    area_type = build_area_table_by_property(
-        base,
-        ptype_col=category_col,
-        status_col="compliance_status",
+        ptype_options = sorted(
+            area_type["ptype_key"].dropna().astype("string").unique().tolist()
+        )
+        if not ptype_options:
+            st.warning("No groups available for the selected category in this year.")
+            st.stop()
+
+        selected_map_group = st.selectbox(
+            f"{category_col} (for right map)",
+            ptype_options,
+            index=0,
+            key="combine_map_group",
+        )
+
+        # -------------------- (5) Two maps --------------------
+        left, right = st.columns(2)
+
+        with left:
+            st.subheader("Overall (all buildings)")
+            st.altair_chart(
+                plot_noncompliance_per_year(
+                    chi_geo=chi_geo,
+                    area=area_overall,
+                    scheme="blues",
+                    domain=map_domain,
+                    width=650,
+                    height=550,
+                    year=int(map_year),
+                    color_field=map_color_field,
+                    title=f"{metric_label} — Overall ({map_year})",
+                ),
+                use_container_width=True,
+            )
+
+        with right:
+            st.subheader(f"{category_col}: {selected_map_group}")
+            st.altair_chart(
+                plot_noncompliance_by_property_selected(
+                    chi_geo=chi_geo,
+                    area_type=area_type,
+                    selected_ptype=selected_map_group,
+                    scheme="blues",
+                    domain=map_domain,
+                    width=650,
+                    height=550,
+                    year=int(map_year),
+                    color_field=map_color_field,
+                    title=f"{metric_label} — {selected_map_group} ({map_year})",
+                ),
+                use_container_width=True,
+            )
+
+        with st.expander("Show community-area table (overall)", expanded=False):
+            st.dataframe(area_overall, use_container_width=True, height=350)
+
+    # ============================================================
+    # (6)-(8) Charts section - DISPLAYED SECOND (uses 4 small filters)
+    # ============================================================
+    st.divider()
+    st.subheader("Compliance trends over time (filtered)")
+
+    # -------------------- (6) 4 small filters (CHARTS ONLY) --------------------
+    sel_time_built, sel_ppt, sel_tlpt, sel_ca = [None, None, None, None]
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        time_built_options = ["All"] + sorted(
+            energy_df["Time Built"].dropna().unique().tolist()
+        )
+        sel_time_built = st.selectbox(
+            "Time Built",
+            time_built_options,
+            index=0,
+            key="combine_time_built",
+        )
+
+    with col2:
+        ppt_options = ["All"] + sorted(
+            energy_df["Primary Property Type"].dropna().unique().tolist()
+        )
+        sel_ppt = st.selectbox(
+            "Primary Property Type",
+            ppt_options,
+            index=0,
+            key="combine_ppt",
+        )
+
+    with col3:
+        tlpt_options = ["All"] + sorted(
+            energy_df["Top-Level Property Type"].dropna().unique().tolist()
+        )
+        sel_tlpt = st.selectbox(
+            "Top-Level Property Type",
+            tlpt_options,
+            index=0,
+            key="combine_tlpt",
+        )
+
+    with col4:
+        ca_options = ["All"] + sorted(
+            energy_df["Community Area"].dropna().unique().tolist()
+        )
+        sel_ca = st.selectbox(
+            "Community Area",
+            ca_options,
+            index=0,
+            key="combine_ca",
+        )
+
+    # -------------------- (7) Apply the standard filter logic to the charts dataset --------------------
+    energy_df_filtered = filter_energy_by_selections(
+        energy_df,
+        sel_time_built=sel_time_built,
+        sel_ppt=sel_ppt,
+        sel_ca=sel_ca,
+        sel_tlpt=sel_tlpt,
     )
 
-    ptype_options = sorted(
-        area_type["ptype_key"].dropna().astype("string").unique().tolist()
-    )
-    if not ptype_options:
-        st.warning("No groups available for the selected category in this year.")
+    if energy_df_filtered.empty:
+        # Show helpful error message with actionable suggestions
+        filter_selections = {}
+        if sel_time_built != "All":
+            filter_selections["Time Built"] = sel_time_built
+        if sel_ppt != "All":
+            filter_selections["Primary Property Type"] = sel_ppt
+        if sel_tlpt != "All":
+            filter_selections["Top-Level Property Type"] = sel_tlpt
+        if sel_ca != "All":
+            filter_selections["Community Area"] = sel_ca
+
+        show_helpful_filter_error(energy_df_filtered, energy_df, filter_selections)
         st.stop()
 
-    # Default group mirrors chart selected_class if possible
-    if selected_class != "All" and selected_class in ptype_options:
-        default_group = selected_class
-    else:
-        default_group = ptype_options[0]
+    MIN_YEARS_REQUIRED = 2
+    if energy_df_filtered["Data Year"].nunique() < MIN_YEARS_REQUIRED:
+        st.warning("Not enough years of data under these filters to evaluate trends.")
+        st.stop()
 
-    selected_map_group = st.selectbox(
-        f"{category_col} (right map)",
-        ptype_options,
-        index=ptype_options.index(default_group),
-        key="combine_map_group",
-        help="Repeated here for easier reading right before the maps.",
+    # -------------------- (8) Category-value filter (All vs one class) --------------------
+    agg = aggregate_compliance_over_time(
+        energy_df=energy_df_filtered,
+        category_col=category_col,
+    )
+    agg_plot, selected_class = apply_category_filter(agg, category_col)
+
+    # -------------------- (9) Charts --------------------
+    st.altair_chart(
+        plot_compliance_rate_over_time(
+            df=agg_plot,
+            year_col="Data Year",
+            group_col=category_col,
+            value_col=value_col,
+            y_title=y_title,
+        ),
+        use_container_width=True,
     )
 
-    # -------------------- (8) Two maps --------------------
-    left, right = st.columns(2)
-
-    with left:
-        st.subheader("Overall (all buildings)")
-        st.altair_chart(
-            plot_noncompliance_per_year(
-                chi_geo=chi_geo,
-                area=area_overall,
-                scheme="blues",
-                domain=map_domain,
-                width=650,
-                height=550,
-                year=int(map_year),
-                color_field=map_color_field,
-                title=f"{metric_label} — Overall ({map_year})",
-            ),
-            use_container_width=True,
-        )
-
-    with right:
-        st.subheader(f"{category_col}: {selected_map_group}")
-        st.altair_chart(
-            plot_noncompliance_by_property_selected(
-                chi_geo=chi_geo,
-                area_type=area_type,
-                selected_ptype=selected_map_group,
-                scheme="blues",
-                domain=map_domain,
-                width=650,
-                height=550,
-                year=int(map_year),
-                color_field=map_color_field,
-                title=f"{metric_label} — {selected_map_group} ({map_year})",
-            ),
-            use_container_width=True,
-        )
-
-    with st.expander("Show community-area table (overall)", expanded=False):
-        st.dataframe(area_overall, use_container_width=True, height=350)
+    st.altair_chart(
+        plot_compliance_status_facets(
+            df=agg_plot,
+            year_col="Data Year",
+            group_col=category_col,
+            n_submitted_col="n_submitted",
+            n_exempt_col="n_exempt",
+            n_not_submitted_col="n_not_submitted",
+        ),
+        use_container_width=True,
+    )
 
 
 if __name__ == "__main__":

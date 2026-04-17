@@ -1272,11 +1272,82 @@ def prepare_geojson(geojson: dict) -> pd.DataFrame:
 # help plottting spatial maps by aggregate mean metrics
 @st.cache_data
 def aggregate_metric(dff: pd.DataFrame, metric: str) -> pd.DataFrame:
-    """Aggregate a given metric by Community Area and Data Year using Mean."""
+    """Aggregate a given metric by Community Area and Data Year using Mean.
+
+    Args:
+        dff: DataFrame containing the data to aggregate
+        metric: Name of the metric column to aggregate
+
+    Returns:
+        DataFrame with columns: Neighborhood, Data Year, and the aggregated metric
+
+    Raises:
+        ValueError: If input validation fails
+    """
+    # Validation 1: Check if DataFrame is empty
+    if dff is None or dff.empty:
+        logger.warning("aggregate_metric called with empty DataFrame")
+        return pd.DataFrame(columns=["Neighborhood", "Data Year", metric])
+
+    # Validation 2: Check required columns exist
+    required_cols = ["Community Area"]
+    missing_cols = [col for col in required_cols if col not in dff.columns]
+
+    if missing_cols:
+        logger.error(f"Missing required columns: {missing_cols}")
+        raise ValueError(
+            f"DataFrame must contain columns: {required_cols}. "
+            f"Missing: {missing_cols}. "
+            f"Available columns: {list(dff.columns)}"
+        )
+
+    # Validation 3: Check metric column exists
+    if metric not in dff.columns:
+        available_metrics = [
+            col
+            for col in dff.columns
+            if col
+            not in ["ID", "Property Name", "Address", "Community Area", "Neighborhood"]
+        ]
+        logger.error(f"Metric '{metric}' not found in DataFrame columns")
+        raise ValueError(
+            f"Metric column '{metric}' not found in DataFrame. "
+            f"Available metric columns: {available_metrics[:10]}"
+            + (f" (and {len(available_metrics) - 10} more)" if len(available_metrics) > 10 else "")
+        )
+
+    # Core aggregation logic
     dff = dff.dropna(subset=["Community Area", metric]).copy()
+
+    # Check if data remains after dropping NAs
+    if dff.empty:
+        logger.warning(
+            f"No valid data remaining after dropping NAs for Community Area and {metric}"
+        )
+        return pd.DataFrame(columns=["Neighborhood", "Data Year", metric])
+
     dff["Neighborhood"] = dff["Community Area"].str.strip().str.title()
+
+    # Validation 4: Track numeric conversion failures
+    original_count = len(dff)
     dff[metric] = pd.to_numeric(dff[metric], errors="coerce")
+    valid_count = dff[metric].notna().sum()
+    conversion_failures = original_count - valid_count
+
+    if conversion_failures > 0:
+        failure_rate = (conversion_failures / original_count) * 100
+        logger.warning(
+            f"Numeric conversion: {conversion_failures} failures out of {original_count} "
+            f"({failure_rate:.1f}%) for metric '{metric}'"
+        )
+
+    # Final aggregation
     grouped = dff.groupby(["Neighborhood", "Data Year"], as_index=False)[metric].mean()
+
+    # Validation 5: Check if aggregation produced results
+    if grouped.empty:
+        logger.warning(f"Aggregation produced no results for metric '{metric}'")
+
     return grouped
 
 

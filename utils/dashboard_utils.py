@@ -589,6 +589,75 @@ def build_standard_filters(
     return category_col, sel_time_built, sel_ppt, sel_tlpt, sel_ca
 
 
+def show_helpful_filter_error(
+    filtered_df: pd.DataFrame,
+    original_df: pd.DataFrame,
+    filter_selections: dict[str, any],
+) -> None:
+    """Display actionable error message when filters produce no results.
+
+    Args:
+        filtered_df: The filtered DataFrame (empty)
+        original_df: The original unfiltered DataFrame
+        filter_selections: Dict mapping filter names to selected values
+            Example: {
+                "Time Built": ["Pre-1945", "1945-1969"],
+                "Primary Property Type": ["Office"],
+                "Community Area": ["Loop"],
+            }
+    """
+    st.error("### ⚠️ No buildings match your current filter selections")
+
+    st.markdown(
+        "Your filters are too restrictive. Try broadening your selections to see data."
+    )
+
+    # Show current filter settings in an expander
+    with st.expander("📋 Current Filter Settings", expanded=True):
+        for filter_name, selected_values in filter_selections.items():
+            if isinstance(selected_values, list):
+                if len(selected_values) == 0:
+                    st.markdown(f"- **{filter_name}**: ❌ None selected")
+                else:
+                    st.markdown(f"- **{filter_name}**: {', '.join(map(str, selected_values))}")
+            else:
+                st.markdown(f"- **{filter_name}**: {selected_values}")
+
+    # Identify which filter is most restrictive
+    st.markdown("### 💡 Suggestions:")
+
+    filter_match_counts = {}
+    for filter_name, selected_values in filter_selections.items():
+        if isinstance(selected_values, list) and len(selected_values) > 0:
+            # For multi-select filters
+            matching_count = original_df[
+                original_df[filter_name].isin(selected_values)
+            ].shape[0]
+            filter_match_counts[filter_name] = matching_count
+        elif not isinstance(selected_values, list) and selected_values != "All":
+            # For single-select filters
+            matching_count = original_df[
+                original_df[filter_name] == selected_values
+            ].shape[0]
+            filter_match_counts[filter_name] = matching_count
+
+    if filter_match_counts:
+        most_restrictive = min(filter_match_counts, key=filter_match_counts.get)
+        st.markdown(
+            f"- **Most restrictive filter**: `{most_restrictive}` "
+            f"(only {filter_match_counts[most_restrictive]:,} buildings match)"
+        )
+        st.markdown(f"- **Recommendation**: Try selecting more values for `{most_restrictive}`")
+
+    # Show quick actions
+    st.markdown("### 🔧 Quick Actions:")
+    st.markdown(
+        "1. Use the **filter selectors above** to broaden your choices\n"
+        "2. Select **'All'** for filters you don't need\n"
+        "3. Try a **different combination** of filters"
+    )
+
+
 def aggregate_compliance_over_time(
     energy_df: pd.DataFrame,
     category_col: str,

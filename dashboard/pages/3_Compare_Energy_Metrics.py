@@ -6,15 +6,14 @@ import streamlit as st
 
 from utils.dashboard_utils import (
     apply_page_config,
+    cache_aggregate_metric,
     cache_energy_data,
-    cache_full_data,
     cache_geojson,
     metric_list,
     style_matplotlib,
     year_lists,
 )
 from utils.plot_utils import (
-    aggregate_metric,
     plot_choropleth,
     plot_trend_by_year,
 )
@@ -31,7 +30,6 @@ st.markdown(
 st.markdown("")
 
 # -------------------- Load Data --------------------
-full_data = cache_full_data()
 energy_data = cache_energy_data()
 geojson_data = cache_geojson()
 metrics_list = metric_list()
@@ -115,13 +113,13 @@ else:
 
 col1, col2 = st.columns(2)
 with col1:
-    agg_df = aggregate_metric(map_filtered_df, selected1)
+    agg_df = cache_aggregate_metric(map_filtered_df, selected1)
 
     eng_map = plot_choropleth(geojson_data, agg_df, selected1, year=map_year_arg)
     st.altair_chart(eng_map, use_container_width=True)
 
 with col2:
-    agg_df = aggregate_metric(map_filtered_df, selected2)
+    agg_df = cache_aggregate_metric(map_filtered_df, selected2)
 
     eng_map = plot_choropleth(geojson_data, agg_df, selected2, year=map_year_arg)
     st.altair_chart(eng_map, use_container_width=True)

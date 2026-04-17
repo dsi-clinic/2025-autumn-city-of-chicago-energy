@@ -96,11 +96,13 @@ def cache_covered_buildings() -> pd.DataFrame:
     return covered_df
 
 
-@st.cache_data
+@st.cache_resource
 def cache_geojson(tolerance: float = 0.00259) -> dict:
     """Caching geojson data.
 
-    Default tolerance is 0.00259 from balancing from appearence and rendering time
+    Default tolerance is 0.00259 from balancing from appearence and rendering time.
+    Uses cache_resource because geojson is a large, immutable read-only asset —
+    avoids the pickle/unpickle overhead of cache_data on every cache hit.
     """
     geojson_data = load_neighborhood_geojson()
     gdf = gpd.GeoDataFrame.from_features(geojson_data["features"])
@@ -128,9 +130,13 @@ def cache_community_geojson_url(tolerance: float = 0.00259) -> str:
     return geojson_to_data_url(geo)
 
 
-@st.cache_data
+@st.cache_resource
 def cache_community_geojson(tolerance: float = 0.00259) -> dict:
-    """Cache community area geojson of Chicago."""
+    """Cache community area geojson of Chicago.
+
+    Uses cache_resource because geojson is a large, immutable read-only asset —
+    avoids the pickle/unpickle overhead of cache_data on every cache hit.
+    """
     geojson_data = load_community_geojson()
     gdf = gpd.GeoDataFrame.from_features(geojson_data["features"])
 
@@ -222,6 +228,17 @@ def cache_build_all_aggregates(
 ) -> dict[str, pd.DataFrame]:
     """Cache aggregated metrics for all variables"""
     return {metric: aggregate_metric(df, metric) for metric in metrics}
+
+
+@st.cache_data
+def cache_aggregate_metric(dff: pd.DataFrame, metric: str) -> pd.DataFrame:
+    """Cached wrapper around :func:`aggregate_metric`.
+
+    The underlying groupby is small but recomputed on every Streamlit rerun
+    (i.e. every widget interaction). Caching the result keyed on (df, metric)
+    avoids redoing the groupby when the user only changes an unrelated control.
+    """
+    return aggregate_metric(dff, metric)
 
 
 @st.cache_data
@@ -377,7 +394,7 @@ def render_dashboard_section(
     with col1:
         # Map
         map_year_arg = None if trend_year == "Average (All Years)" else int(trend_year)
-        agg_df = aggregate_metric(map_filtered, metric)
+        agg_df = cache_aggregate_metric(map_filtered, metric)
         map_chart = plot_choropleth(
             geojson_data, agg_df, metric, year=map_year_arg
         ).properties(height=500)

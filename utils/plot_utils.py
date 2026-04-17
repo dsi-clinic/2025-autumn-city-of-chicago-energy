@@ -21,6 +21,7 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import streamlit as st
 from statsmodels.regression.linear_model import RegressionResultsWrapper
 
 from utils.fix_effect_utils import extract_model_coefficients
@@ -1269,6 +1270,7 @@ def prepare_geojson(geojson: dict) -> pd.DataFrame:
 
 
 # help plottting spatial maps by aggregate mean metrics
+@st.cache_data
 def aggregate_metric(dff: pd.DataFrame, metric: str) -> pd.DataFrame:
     """Aggregate a given metric by Community Area and Data Year using Mean."""
     dff = dff.dropna(subset=["Community Area", metric]).copy()

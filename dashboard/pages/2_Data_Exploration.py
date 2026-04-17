@@ -10,6 +10,7 @@ from utils.dashboard_utils import (
     cache_full_data,
     cache_geojson,
     metric_list,
+    precompute_animation_maps,
     render_dashboard_section,
     render_yearly_map,
     year_lists,
@@ -63,6 +64,9 @@ with ctrl4:
 # Layout columns
 col1, col2 = st.columns([1, 1])
 
+# Pre-compute all maps for smooth animation (cached)
+yearly_maps = precompute_animation_maps(years_list, geojson_data, full_data, log_scale)
+
 # --- Full Data Animation ---
 with col1:
     animation_placeholder = st.empty()
@@ -74,7 +78,7 @@ with col1:
             current_year = years_list[st.session_state.current_index]
             with animation_placeholder.container():
                 st.altair_chart(
-                    render_yearly_map(current_year, geojson_data, full_data, log_scale),
+                    yearly_maps[current_year],
                     use_container_width=True,
                 )
                 st.progress(st.session_state.current_index / (len(years_list) - 1))
@@ -83,13 +87,12 @@ with col1:
             st.session_state.current_index += 1
             if st.session_state.current_index >= len(years_list):
                 st.session_state.current_index = 0
-        st.session_state.playing = False
-        st.rerun()
+                st.session_state.playing = False
     else:
         current_year = years_list[st.session_state.current_index]
         with animation_placeholder.container():
             st.altair_chart(
-                render_yearly_map(current_year, geojson_data, full_data, log_scale),
+                yearly_maps[current_year],
                 use_container_width=True,
             )
 

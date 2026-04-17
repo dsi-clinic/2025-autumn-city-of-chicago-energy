@@ -281,6 +281,18 @@ def render_yearly_map(
     return alt.layer(base, overlay).properties(height=500)
 
 
+@st.cache_data
+def precompute_animation_maps(
+    years: list[int], geojson_data: dict, data: pd.DataFrame, log_scale: bool = False
+) -> dict[int, alt.Chart]:
+    """Pre-compute all yearly maps for smooth animation without page reloads.
+
+    This function caches the expensive map generation, enabling smooth animation
+    by only updating the container content rather than triggering full page reloads.
+    """
+    return {year: render_yearly_map(year, geojson_data, data, log_scale) for year in years}
+
+
 # grouped charts #-------------------------------------------------------------------s
 
 

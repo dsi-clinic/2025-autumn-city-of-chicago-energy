@@ -1025,6 +1025,7 @@ def plot_energy_persistence_by_year(
     end_year: int = 2023,
     width: int = 320,
     height: int = 320,
+    metric_label: str = None,
 ) -> alt.Chart:
     """Create a 2×3 grid of scatter plots showing Δ N→N+1 vs Δ N+1→N+2 per base year N.
 
@@ -1080,6 +1081,8 @@ def plot_energy_persistence_by_year(
         empty="all",
     )
 
+    _unit = metric_label if metric_label else "value"
+
     def make_chart(year: int) -> alt.Chart:
         df_year = data[data["N_year"] == year]
         if df_year.empty:
@@ -1088,9 +1091,9 @@ def plot_energy_persistence_by_year(
             alt.Chart(df_year)
             .mark_circle(size=55)
             .encode(
-                x=alt.X(f"{delta_col}:Q", title=f"Δ {year}→{year+1} (kBtu/sq ft)"),
+                x=alt.X(f"{delta_col}:Q", title=f"Δ {year}→{year+1} ({_unit})"),
                 y=alt.Y(
-                    f"{delta_next_col}:Q", title=f"Δ {year+1}→{year+2} (kBtu/sq ft)"
+                    f"{delta_next_col}:Q", title=f"Δ {year+1}→{year+2} ({_unit})"
                 ),
                 color=alt.condition(
                     type_select, f"{property_col}:N", alt.value("lightgray")
@@ -1170,6 +1173,7 @@ def plot_energy_persistence_rows(
     width: int = 320,
     height: int = 320,
     selected_category: str = None,
+    metric_label: str = None,
 ) -> list[alt.HConcatChart]:
     """Return a list of row charts (each row is an hconcat of years)."""
     data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
@@ -1183,6 +1187,8 @@ def plot_energy_persistence_rows(
     if not years:
         return []
 
+    _unit = metric_label if metric_label else "value"
+
     type_select = alt.selection_point(
         fields=[property_col],
         empty="all",
@@ -1193,8 +1199,8 @@ def plot_energy_persistence_rows(
         if df_year.empty:
             return alt.Chart().mark_text(text="").properties(width=width, height=height)
 
-        x_title = f"Δ {year}→{year+1} (kBtu/sq ft)"
-        y_title = f"Δ {year+1}→{year+2} (kBtu/sq ft)"
+        x_title = f"Δ {year}→{year+1} ({_unit})"
+        y_title = f"Δ {year+1}→{year+2} ({_unit})"
 
         scatter = (
             alt.Chart(df_year)

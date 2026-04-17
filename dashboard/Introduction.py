@@ -102,7 +102,7 @@ with col1:
     st.markdown("""
     ### About the Data
 
-    This dashboard analyzes 10 years (2015-2024) of energy reports from thousands of large Chicago buildings.
+    This dashboard analyzes 10 years of energy benchmarking data (data years 2014–2023) from thousands of large Chicago buildings.
 
     **Includes:**
     - Energy consumption (electricity, gas, steam)
@@ -125,7 +125,7 @@ with col1:
     - **1 star** = Lowest efficiency
     - **0 stars** = Building did not report data or had incomplete data
 
-    **Required since 2019:** Buildings must post this rating in lobbies and share it when selling or leasing.
+    **Required since 2019:** Buildings must post this rating in a prominent location and share it when selling or leasing.
     For more information, visit: www.ChicagoEnergyRating.org.
 
     **ENERGY STAR Score:** 1–100 rating that assesses a property's overall energy performance, based on
@@ -133,7 +133,8 @@ with col1:
     represents the national median.
 
     **Exempt from Rating:** Some buildings must still report energy data but don't receive a star rating,
-    typically due to technical reasons (e.g., unusual energy systems, special use buildings).
+    typically due to low occupancy (below 50% for the year), financial distress, industrial or warehouse use,
+    or a change of ownership during the reporting year.
     """)
 
 with col2:
@@ -149,7 +150,7 @@ with st.expander("Timeline of Reported Data"):
     - [**2015** Data Reported in 2016](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2015-Data-Reported-in-/ebtp-548e/about_data)
     - [**2016** Data Reported in 2017](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2016-Data-Reported-in-/fpwt-snya/about_data)
     - [**2017** Data Reported in 2018](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2017-Data-Reported-in-/j2ev-2azp/about_data)
-    - [**2018** Data Reported in 2019 *(First year with Chicago Energy Rating)*](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2018-Data-Reported-in-/m2kv-bmi3/about_data)
+    - [**2018** Data Reported in 2019 *(First year Chicago Energy Ratings were issued — ratings were based on this data and distributed in August 2019)*](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2018-Data-Reported-in-/m2kv-bmi3/about_data)
     - [**2019** Data Reported in 2020](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2019-Data-Reported-in-/jn94-it7m/about_data)
     - [**2020** Data Reported in 2021](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2020-Data-Reported-in-/ydbk-8hi6/about_data)
     - [**2021** Data Reported in 2023](https://data.cityofchicago.org/Environment-Sustainable-Development/Chicago-Energy-Benchmarking-2021-Data-Reported-in-/gkf4-txtp/about_data)

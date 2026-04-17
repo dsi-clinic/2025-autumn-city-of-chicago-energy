@@ -17,21 +17,12 @@ from utils.plot_utils import plot_energy_persistence_rows
 
 """Streamlit page for analyzing autocorrelation of year-over-year energy changes."""
 apply_page_config()
-st.title("Energy Use Patterns Over Time")
+st.title("Autocorrelation of Year-over-Year Changes in Energy Use")
 
 st.markdown("""
-### Do Buildings Follow Energy Trends?
+When examining aggregate trends over time, building-level autocorrelation reveals whether those trends are driven by persistent building-level changes or by mean reversion. Specifically, this page analyzes the lag-1 first-difference autocorrelation: if a building's energy use increased last year, is it more or less likely to increase again this year—or vice versa?
 
-When a building's energy use increases one year, what happens the next year?
-Does it keep increasing, or does it bounce back?
-
-**This page examines:** Whether buildings show consistent energy use patterns over time,
-or whether changes from year to year are random.
-
-**The data:** Covers buildings that reported every year from 2016-2023, allowing us to
-track year-over-year changes.
-
-Use the filters below to explore patterns by building type, age, and neighborhood.
+Each chart shows the year-over-year change in energy use (Δ) for a given building in one year versus the following year (e.g., 2016 vs. 2017). Only buildings that reported every year from 2016–2023 are included. Use the filters to group or explore by building age, property type, and community area.
 """)
 
 # Load and clean data using standard dashboard utilities
@@ -124,6 +115,7 @@ rows = plot_energy_persistence_rows(
     delta_next_col="Delta_next",
     start_year=2017,
     end_year=2023,
+    metric_label=site_eui_col,
 )
 
 for row_chart in rows:

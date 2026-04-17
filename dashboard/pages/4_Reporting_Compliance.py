@@ -103,6 +103,12 @@ def main() -> None:
         "Track which buildings report their energy data on time, and see how reporting rates "
         "vary by neighborhood and building type."
     )
+    st.caption(
+        "Note: Charts and maps on this page begin with data year 2018, which is the first year "
+        "used to assign Chicago Energy Ratings (issued in August 2019). The benchmarking ordinance "
+        "has been in effect since 2014, but this dashboard focuses on the period covered by the "
+        "rating program."
+    )
 
     # -------------------- Load datasets --------------------
     restriction_year = 2018

@@ -714,21 +714,21 @@ def choose_compliance_metric() -> tuple[str, str]:
     metric_option = st.selectbox(
         "Compliance metric",
         options=[
-            "Share submitted",
-            "Share non‑compliant",
-            "Number submitted",
-            "Number non‑compliant",
+            "% of Buildings That Reported",
+            "% of Buildings That Did Not Report",
+            "Number of Buildings That Reported",
+            "Number of Buildings That Did Not Report",
         ],
         index=0,
     )
 
-    if metric_option == "Share submitted":
-        return "share_submitted", "Share submitted"
-    if metric_option == "Share non‑compliant":
-        return "share_non_compliant", "Share non‑compliant"
-    if metric_option == "Number submitted":
-        return "n_submitted", "Submitted buildings"
-    return "n_non_compliant", "Non‑compliant buildings"
+    if metric_option == "% of Buildings That Reported":
+        return "share_submitted", "% of Buildings That Reported"
+    if metric_option == "% of Buildings That Did Not Report":
+        return "share_non_compliant", "% of Buildings That Did Not Report"
+    if metric_option == "Number of Buildings That Reported":
+        return "n_submitted", "Number of Buildings That Reported"
+    return "n_non_compliant", "Number of Buildings That Did Not Report"
 
 
 def apply_category_filter(

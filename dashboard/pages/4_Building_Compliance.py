@@ -85,13 +85,23 @@ def main() -> None:
     - Charts use the four small filters; maps ignore them and only use year + category.
     """
     apply_page_config()
-    st.title("Compliance with Chicago Energy Benchmarking Over Time")
+    st.title("Building Energy Reporting Compliance")
 
+    with st.container(border=True):
+        st.markdown("""
+        > **About Reporting Requirements**
+        > Chicago requires large buildings to report energy data annually. This page shows:
+        > - ✓ **Reported:** Buildings that submitted their energy data
+        > - ✗ **Did Not Report:** Buildings that missed the deadline
+        > - **Exempt:** Buildings not required to report (special circumstances)
+        >
+        > Buildings that don't report face penalties and receive a 0-star rating.
+        """)
+
+    st.markdown("")
     st.markdown(
-        """
-This dashboard tracks Chicago buildings’ energy benchmarking compliance over time,
-and adds community-area **non-compliance maps** under the **same metric** selection.
-"""
+        "Track which buildings report their energy data on time, and see how reporting rates "
+        "vary by neighborhood and building type."
     )
 
     # -------------------- Load datasets --------------------
@@ -154,7 +164,7 @@ and adds community-area **non-compliance maps** under the **same metric** select
     # (2)-(5) Maps section - DISPLAYED FIRST (ignores 4 small filters below)
     # ============================================================
     st.divider()
-    st.subheader("Non-compliance maps (community area)")
+    st.subheader("Reporting Rates by Neighborhood")
 
     # -------------------- (2) Map year selector --------------------
     DEFAULT_YEAR = 2018
@@ -203,7 +213,7 @@ and adds community-area **non-compliance maps** under the **same metric** select
         left, right = st.columns(2)
 
         with left:
-            st.markdown("#### Overall (All Buildings)")
+            st.markdown("#### All Buildings Citywide")
             st.caption(f"All buildings in Chicago, {map_year}")
             st.altair_chart(
                 plot_noncompliance_per_year(
@@ -252,7 +262,7 @@ and adds community-area **non-compliance maps** under the **same metric** select
         left, right = st.columns(2)
 
         with left:
-            st.markdown("#### Overall (All Buildings)")
+            st.markdown("#### All Buildings Citywide")
             st.caption(f"All buildings in Chicago, {map_year}")
             st.altair_chart(
                 plot_noncompliance_per_year(

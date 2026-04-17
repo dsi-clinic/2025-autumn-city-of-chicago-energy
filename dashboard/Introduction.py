@@ -76,40 +76,64 @@ with col1:
     st.markdown("")
 
     st.markdown("""
-    ## Problem Statements
+    ## Questions This Dashboard Explores
 
-    **Does the placard program work?** The City of Chicago wants to know whether its Energy Rating
-    Placard program—which makes building energy efficiency publicly visible—has actually led to
-    improvements in energy performance across buildings.
+    **1. Is the placard program working?**
+    Do buildings improve their energy efficiency after ratings become public?
 
-    **What drives improvement?** We need to determine which building characteristics (e.g., size, type,
-    energy source mix) are most strongly linked to performance improvements over time.
+    **2. What drives improvement?**
+    Which building characteristics (size, type, age) predict better performance?
 
-    **Where to focus efforts?** We want to predict which buildings are most likely to improve, so the
-    City can better target outreach or incentives.
+    **3. Where should the city focus?**
+    Which buildings are most likely to benefit from outreach or incentives?
     """)
+
+    st.markdown("")
+
+    with st.container(border=True):
+        st.markdown("""
+        > **What is Energy Benchmarking?**
+        > Chicago requires large buildings (50,000+ sq ft) to report their energy use annually.
+        > This data helps track energy consumption, identify inefficient buildings, and measure
+        > progress toward climate goals.
+        """)
 
     st.markdown("# Data")
     st.markdown("""
-    ### Dataset Overview
+    ### About the Data
 
-    - **Volume:** Covers roughly 10 years of data (2015–2024) for thousands of large buildings across Chicago that report energy use annually under the city’s Energy Benchmarking Ordinance.
-    - **Type:** Structured, tabular data combining building characteristics (size, type, construction year, location) with annual performance metrics.
-    - **Content:** Includes Energy Star scores, Site Energy Use Intensity (EUI), greenhouse gas emissions, electricity and natural gas consumption, and water use for each property.
-    - **Other Details:** Enables tracking the same building over time, supporting pre/post-placard comparison and modeling of improvement trends.
+    This dashboard analyzes 10 years (2015-2024) of energy reports from thousands of large Chicago buildings.
+
+    **Includes:**
+    - Energy consumption (electricity, gas, steam)
+    - ENERGY STAR scores
+    - Greenhouse gas emissions
+    - Building characteristics (size, type, age, location)
     """)
 
-    st.caption(
-        "Filtered to the 2,363 buildings (of 3,852 total) that submitted a report "
-        "in every year from 2016 to 2023, enabling consistent year-over-year comparison."
+    st.markdown(
+        "**Filtered to:** 2,363 buildings that reported consistently from 2016-2023, "
+        "enabling year-over-year comparisons."
     )
 
     st.markdown("""
     #### Definitions
 
-    - **Chicago Energy Rating:** The zero-to-four-star Chicago Energy Rating assigned to the building in the shown Data Year. A building with zero stars did not submit a report, or did submit a report but was missing required information. All other buildings receive between one and four stars, with four stars reflecting the highest performance. Every building receives a Chicago Energy Rating Placard with this rating, which must be posted in a prominent location at the building. The rating must also be shared at the time of listing the building for sale or for lease. For more information, visit: www.ChicagoEnergyRating.org. This column was added for the 2018 Data Year. It is blank for previous years.
-    - **ENERGY STAR Score:** 1–100 rating that assesses a property’s overall energy performance, based on national data to control for differences among climate, building uses, and operations. A score of 50 represents the national median.
-    - **Exempt From Chicago Energy Rating:** Shows whether the building is subject to the Chicago Energy Rating Ordinance. Some properties are required to submit energy benchmarking reports but are not subject to the requirements of the Chicago Energy Rating program. These buildings do not receive a Chicago Energy Rating, typically due to technical reasons. This column was added for the 2018 Data Year. It is blank for previous years.
+    **Chicago Energy Rating:** A 0-4 star rating displayed on building placards.
+
+    - **4 stars** = Highest efficiency
+    - **1 star** = Lowest efficiency
+    - **0 stars** = Building did not report data or had incomplete data
+
+    **Required since 2019:** Buildings must post this rating in lobbies and share it when selling or leasing.
+    For more information, visit: www.ChicagoEnergyRating.org.
+
+    **ENERGY STAR Score:** 1–100 rating that assesses a property's overall energy performance, based on
+    national data to control for differences among climate, building uses, and operations. A score of 50
+    represents the national median.
+
+    **Exempt from Rating:** Some buildings must still report energy data but don't receive a star rating,
+    typically due to technical reasons (e.g., unusual energy systems, special use buildings).
     """)
 
 with col2:

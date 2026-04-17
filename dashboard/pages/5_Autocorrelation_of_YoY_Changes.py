@@ -17,22 +17,21 @@ from utils.plot_utils import plot_energy_persistence_rows
 
 """Streamlit page for analyzing autocorrelation of year-over-year energy changes."""
 apply_page_config()
-st.title("Autocorrelation of Year-over-Year Changes in Energy Use")
+st.title("Energy Use Patterns Over Time")
 
 st.markdown("""
-### What is Autocorrelation?
+### Do Buildings Follow Energy Trends?
 
-When analyzing trends over time, examining the relationship between past and future
-changes at the building level can reveal important patterns.
+When a building's energy use increases one year, what happens the next year?
+Does it keep increasing, or does it bounce back?
 
-**This page examines:** If a building's energy use increased last year, is it more or
-less likely to increase again this year?
+**This page examines:** Whether buildings show consistent energy use patterns over time,
+or whether changes from year to year are random.
 
-Each chart below compares year-over-year changes across consecutive years.
-Use the filters to explore patterns by building type, age, and location.
+**The data:** Covers buildings that reported every year from 2016-2023, allowing us to
+track year-over-year changes.
 
-*Restricted to buildings that submitted a report in every year from 2016 to 2023,
-so that each building has a complete timeseries for computing year-over-year changes.*
+Use the filters below to explore patterns by building type, age, and neighborhood.
 """)
 
 # Load and clean data using standard dashboard utilities
@@ -58,7 +57,7 @@ variables = [
 
 with st.container(border=True):
     st.markdown(
-        '<p style="color:#1e3a5f;font-weight:600;font-size:1rem;margin:0 0 0.5rem 0;">Filter & Metric Selection</p>',
+        '<p style="color:#1e3a5f;font-weight:600;font-size:1rem;margin:0 0 0.5rem 0;">Customize Your View</p>',
         unsafe_allow_html=True,
     )
 

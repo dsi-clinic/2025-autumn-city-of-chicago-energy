@@ -22,11 +22,11 @@ from utils.plot_utils import (
 # -------------------- Page Setup --------------------
 apply_page_config()
 start = time.time()
-st.title("Comparison Dashboard")
+st.title("Compare Energy Metrics")
 
 st.markdown(
-    "Compare any two energy metrics side-by-side to identify patterns, "
-    "correlations, and geographic variations across Chicago buildings."
+    "Pick two energy metrics to compare side-by-side. See how they change over time "
+    "and vary across Chicago neighborhoods."
 )
 st.markdown("")
 
@@ -63,8 +63,8 @@ st.divider()
 
 # COMPARE METRIC TRENDS OVER TIME #-------------------------------------------------------------------
 
-st.markdown("### 📊 Metric Trends Over Time")
-st.markdown("*Average values across all buildings, by year*")
+st.markdown("### 📊 How Have These Metrics Changed Over Time?")
+st.caption("Average for all buildings, by year")
 st.markdown("")
 
 col1, col2 = st.columns(2)
@@ -86,8 +86,8 @@ with col2:
 st.divider()
 
 # COMPARE METRIC GEOGRAPHIC TRENDS #-------------------------------------------------------------------
-st.markdown("### 🗺️ Geographic Distribution")
-st.markdown("*Average values by Chicago community area*")
+st.markdown("### 🗺️ How Do These Metrics Vary by Neighborhood?")
+st.caption("Average by Chicago community area")
 st.markdown("")
 
 map_filtered_df = energy_data.copy()

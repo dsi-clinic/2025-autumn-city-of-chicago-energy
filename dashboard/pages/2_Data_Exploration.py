@@ -21,7 +21,7 @@ from utils.data_utils import add_top_level_property_type
 # -------------------- Page Setup --------------------
 apply_page_config()
 start = time.time()
-st.title("Exploratory Dashboard")
+st.title("Building Data Over Time")
 
 # -------------------- Load Data --------------------
 full_data = cache_full_data()
@@ -89,8 +89,8 @@ yearly_maps = precompute_animation_maps(years_list, geojson_data, full_data, log
 
 # --- Full Data Animation ---
 with col1:
-    st.markdown("#### 📊 All Buildings (Animated)")
-    st.caption("Shows all buildings that reported data in each year")
+    st.markdown("#### 📊 All Reporting Buildings (Animated)")
+    st.caption("Buildings that reported data in each specific year")
     animation_placeholder = st.empty()
 
     if st.session_state.playing:
@@ -122,8 +122,8 @@ with col1:
 
 # --- Complete-Data Buildings Static Map ---
 with col2:
-    st.markdown("#### 🏢 Buildings with Complete Data (Static)")
-    st.caption("Only buildings that reported in every year from 2016 to 2023")
+    st.markdown("#### 🏢 Consistent Reporters (Static)")
+    st.caption("Buildings that reported every year, 2016-2023")
     st.altair_chart(
         render_yearly_map(None, geojson_data, energy_data, log_scale),
         use_container_width=True,
@@ -136,8 +136,8 @@ st.divider()
 
 st.markdown("### 📈 Metric Explorer")
 st.markdown(
-    "Select a metric and classification category to explore geographic patterns, "
-    "distributions, and trends over time."
+    "Choose an energy metric and building category below to see how performance varies "
+    "across Chicago neighborhoods and building types."
 )
 st.markdown("")
 

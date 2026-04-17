@@ -12,78 +12,81 @@ core_dataframe = concurrent_buildings()
 apply_page_config()
 
 st.title("City of Chicago - Energy Dashboard")
-st.subheader("Mentors & Team")
 
 with st.container(border=True):
+    st.markdown("##### Team")
+
     # Three-column layout for mentors
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown(
-            """
-            <div style='text-align: center;'>
-                <strong>External Mentor:</strong> Candice Stauffer
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown("**External Mentor**")
+        st.markdown("Candice Stauffer")
     with col2:
-        st.markdown(
-            """
-            <div style='text-align: center;'>
-                <strong>Internal Mentor:</strong> David Jacobson
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown("**Internal Mentor**")
+        st.markdown("David Jacobson")
     with col3:
-        st.markdown(
-            """
-            <div style='text-align: center;'>
-                <strong>TA:</strong> Carter Tran
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown("**TA**")
+        st.markdown("Carter Tran")
 
-    # Full-page centered team line
-    st.markdown(
-        """
-        <div style='text-align: center; margin-top: 20px;'>
-            <strong>Student Team:</strong> Kiki Mei, Alejandro Orellana, Mira Shi, Han Zhang
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("")
+
+    # Student team
+    st.markdown("**Student Team**")
+    st.markdown("Kiki Mei, Alejandro Orellana, Mira Shi, Han Zhang")
 
 st.divider()
 
 ##################################################
 
+st.subheader("Overview")
+st.markdown("*Understanding Chicago's Energy Rating Placard Program*")
+st.markdown("")
+
 (
     col1,
     col2,
-) = st.columns(2)
+) = st.columns([6, 4])
 with col1:
-    st.markdown(
-        "This dashboard visualizes energy consumption patterns across Chicago’s diverse building stock,"
-        "supporting efforts to improve energy efficiency, reduce costs, and inform policy decisions."
-        "It aggregates and presents data on key metrics such as ENERGY STAR Scores, electricity use, and gas consumption, broken down by building type, neighborhood, and year."
-    )
+    st.markdown("""
+    This dashboard visualizes energy consumption patterns across Chicago's diverse building stock,
+    supporting efforts to improve energy efficiency, reduce costs, and inform policy decisions.
+
+    **Key Features:**
+    - Track ENERGY STAR Scores across building types
+    - Analyze electricity and gas consumption patterns
+    - View trends by neighborhood and year
+    """)
+
+    st.markdown("")
 
     st.markdown("""
     ## Description
 
-    - The City of Chicago requires large buildings to display energy rating placards, showing how efficiently each building uses energy. This project studies how those public ratings have affected building performance over time.
-    - By analyzing data from 2015–2024, we aim to see whether buildings have become more energy-efficient and reduced their greenhouse gas emissions since the placards were introduced in 2019.
-    - Our findings will help the City understand whether the rating system encourages building owners to improve energy efficiency, which can save money, cut emissions, and support Chicago’s climate goals.
+    The City of Chicago requires large buildings to display energy rating placards, showing how
+    efficiently each building uses energy. This project studies how those public ratings have
+    affected building performance over time.
+
+    By analyzing data from 2015–2024, we aim to see whether buildings have become more
+    energy-efficient and reduced their greenhouse gas emissions since the placards were introduced in 2019.
+
+    Our findings will help the City understand whether the rating system encourages building owners
+    to improve energy efficiency, which can save money, cut emissions, and support Chicago's climate goals.
     """)
+
+    st.markdown("")
 
     st.markdown("""
     ## Problem Statements
 
-    - The City of Chicago wants to know whether its Energy Rating Placard program—which makes building energy efficiency publicly visible—has actually led to improvements in energy performance across buildings.
-    - To support this, we need to determine which building characteristics (e.g., size, type, energy source mix) are most strongly linked to performance improvements over time.
-    - We also want to predict which buildings are most likely to improve, so the City can better target outreach or incentives.
+    **Does the placard program work?** The City of Chicago wants to know whether its Energy Rating
+    Placard program—which makes building energy efficiency publicly visible—has actually led to
+    improvements in energy performance across buildings.
+
+    **What drives improvement?** We need to determine which building characteristics (e.g., size, type,
+    energy source mix) are most strongly linked to performance improvements over time.
+
+    **Where to focus efforts?** We want to predict which buildings are most likely to improve, so the
+    City can better target outreach or incentives.
     """)
 
     st.markdown("# Data")
@@ -96,8 +99,9 @@ with col1:
     - **Other Details:** Enables tracking the same building over time, supporting pre/post-placard comparison and modeling of improvement trends.
     """)
 
-    st.markdown(
-        "The final dataframe filters down data to only have core 2363 out of 3852 buildings for the 10 year span."
+    st.caption(
+        "Filtered to the 2,363 buildings (of 3,852 total) that submitted a report "
+        "in every year from 2016 to 2023, enabling consistent year-over-year comparison."
     )
 
     st.markdown("""
@@ -131,7 +135,9 @@ with st.expander("Timeline of Reported Data"):
 
 ######################################################
 
+st.markdown("")
 st.divider()
+st.markdown("")
 
 st.markdown("## Chicago Energy Benchmarking Dataset")
 st.markdown("#### Buildings with Complete Data (2016-2023)")
@@ -145,6 +151,7 @@ if not core_dataframe.empty:
     total_records = len(core_dataframe)
     building_types = core_dataframe["Primary Property Type"].nunique() if "Primary Property Type" in core_dataframe.columns else "N/A"
 
+    st.markdown("**Dataset at a Glance**")
     # Display metrics in columns
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
     with metric_col1:

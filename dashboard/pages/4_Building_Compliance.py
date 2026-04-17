@@ -23,7 +23,6 @@ from utils.dashboard_utils import (
     choose_compliance_metric,
     filter_energy_by_selections,
     load_clean_energy_data_for_dashboards,
-    show_helpful_filter_error,
 )
 from utils.data_utils import (
     add_reporting_compliance_flags,
@@ -132,19 +131,24 @@ and adds community-area **non-compliance maps** under the **same metric** select
     )
 
     # -------------------- (1) Category selector (used by both maps and charts) --------------------
-    st.subheader("Select Classification Category")
-    category_options = [
-        "Primary Property Type",
-        "Top-Level Property Type",
-        "Time Built",
-        "Community Area",
-    ]
-    category_col = st.selectbox(
-        "Classify buildings by:",
-        category_options,
-        index=0,
-        key="combine_category_col",
-    )
+    with st.container(border=True):
+        st.markdown("### Classification Category")
+        st.markdown(
+            "Choose how to group buildings for analysis. "
+            "This affects both the maps below and the charts further down."
+        )
+        category_options = [
+            "Primary Property Type",
+            "Top-Level Property Type",
+            "Time Built",
+            "Community Area",
+        ]
+        category_col = st.selectbox(
+            "Classify buildings by:",
+            category_options,
+            index=0,
+            key="combine_category_col",
+        )
 
     # ============================================================
     # (2)-(5) Maps section - DISPLAYED FIRST (ignores 4 small filters below)
@@ -199,7 +203,8 @@ and adds community-area **non-compliance maps** under the **same metric** select
         left, right = st.columns(2)
 
         with left:
-            st.subheader("Overall (all buildings)")
+            st.markdown("#### Overall (All Buildings)")
+            st.caption(f"All buildings in Chicago, {map_year}")
             st.altair_chart(
                 plot_noncompliance_per_year(
                     chi_geo=chi_geo,
@@ -247,7 +252,8 @@ and adds community-area **non-compliance maps** under the **same metric** select
         left, right = st.columns(2)
 
         with left:
-            st.subheader("Overall (all buildings)")
+            st.markdown("#### Overall (All Buildings)")
+            st.caption(f"All buildings in Chicago, {map_year}")
             st.altair_chart(
                 plot_noncompliance_per_year(
                     chi_geo=chi_geo,
@@ -264,7 +270,8 @@ and adds community-area **non-compliance maps** under the **same metric** select
             )
 
         with right:
-            st.subheader(f"{category_col}: {selected_map_group}")
+            st.markdown(f"#### {category_col}: {selected_map_group}")
+            st.caption(f"Only {selected_map_group} buildings, {map_year}")
             st.altair_chart(
                 plot_noncompliance_by_property_selected(
                     chi_geo=chi_geo,
@@ -290,53 +297,17 @@ and adds community-area **non-compliance maps** under the **same metric** select
     st.divider()
     st.subheader("Compliance trends over time (filtered)")
 
-    # -------------------- (6) 4 small filters (CHARTS ONLY) --------------------
-    sel_time_built, sel_ppt, sel_tlpt, sel_ca = [None, None, None, None]
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        time_built_options = ["All"] + sorted(
-            energy_df["Time Built"].dropna().unique().tolist()
+    # -------------------- (6) Standard multiselect filters (CHARTS ONLY) --------------------
+    with st.container(border=True):
+        st.markdown(
+            '<p style="color:#1e3a5f;font-weight:600;font-size:1rem;margin:0 0 0.5rem 0;">Filter buildings (charts only)</p>',
+            unsafe_allow_html=True,
         )
-        sel_time_built = st.selectbox(
-            "Time Built",
-            time_built_options,
-            index=0,
-            key="combine_time_built",
-        )
-
-    with col2:
-        ppt_options = ["All"] + sorted(
-            energy_df["Primary Property Type"].dropna().unique().tolist()
-        )
-        sel_ppt = st.selectbox(
-            "Primary Property Type",
-            ppt_options,
-            index=0,
-            key="combine_ppt",
-        )
-
-    with col3:
-        tlpt_options = ["All"] + sorted(
-            energy_df["Top-Level Property Type"].dropna().unique().tolist()
-        )
-        sel_tlpt = st.selectbox(
-            "Top-Level Property Type",
-            tlpt_options,
-            index=0,
-            key="combine_tlpt",
-        )
-
-    with col4:
-        ca_options = ["All"] + sorted(
-            energy_df["Community Area"].dropna().unique().tolist()
-        )
-        sel_ca = st.selectbox(
-            "Community Area",
-            ca_options,
-            index=0,
-            key="combine_ca",
+        _, sel_time_built, sel_ppt, sel_tlpt, sel_ca = build_standard_filters(
+            energy_df,
+            include_top_level=True,
+            page_prefix="compliance",
+            include_category_selector=False,
         )
 
     # -------------------- (7) Apply the standard filter logic to the charts dataset --------------------
@@ -349,18 +320,7 @@ and adds community-area **non-compliance maps** under the **same metric** select
     )
 
     if energy_df_filtered.empty:
-        # Show helpful error message with actionable suggestions
-        filter_selections = {}
-        if sel_time_built != "All":
-            filter_selections["Time Built"] = sel_time_built
-        if sel_ppt != "All":
-            filter_selections["Primary Property Type"] = sel_ppt
-        if sel_tlpt != "All":
-            filter_selections["Top-Level Property Type"] = sel_tlpt
-        if sel_ca != "All":
-            filter_selections["Community Area"] = sel_ca
-
-        show_helpful_filter_error(energy_df_filtered, energy_df, filter_selections)
+        st.warning("No buildings match the selected filters. Please broaden your selections.")
         st.stop()
 
     MIN_YEARS_REQUIRED = 2
@@ -387,17 +347,21 @@ and adds community-area **non-compliance maps** under the **same metric** select
         use_container_width=True,
     )
 
-    st.altair_chart(
-        plot_compliance_status_facets(
-            df=agg_plot,
-            year_col="Data Year",
-            group_col=category_col,
-            n_submitted_col="n_submitted",
-            n_exempt_col="n_exempt",
-            n_not_submitted_col="n_not_submitted",
-        ),
-        use_container_width=True,
+    panels = plot_compliance_status_facets(
+        df=agg_plot,
+        year_col="Data Year",
+        group_col=category_col,
+        n_submitted_col="n_submitted",
+        n_exempt_col="n_exempt",
+        n_not_submitted_col="n_not_submitted",
     )
+    st.markdown("**Data Year**")
+    COLS_PER_ROW = 3
+    for i in range(0, len(panels), COLS_PER_ROW):
+        row = panels[i : i + COLS_PER_ROW]
+        for col, chart in zip(st.columns(COLS_PER_ROW), row):
+            with col:
+                st.altair_chart(chart, use_container_width=True)
 
 
 if __name__ == "__main__":

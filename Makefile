@@ -33,7 +33,7 @@ endif
 # Global mount for data directory
 mount_data := -v $(DATA_DIR):/project/data
 
-.PHONY: build-only run-interactive run-notebooks test-pipeline clean
+.PHONY: build-only run-interactive run-notebooks test-pipeline test test-watch test-coverage clean
 
 # Build Docker image 
 build-only: 
@@ -50,6 +50,31 @@ run-streamlit: build-only
 
 test-pipeline: build-only
 	docker compose run --rm $(mount_data) $(project_name) uv run python src/utils/pipeline_example.py
+
+# Run all tests
+test:
+	python -m pytest tests/ -v
+
+# Run tests in watch mode (requires pytest-watch)
+test-watch:
+	python -m pytest tests/ -v --watch
+
+# Run tests with coverage report
+test-coverage:
+	python -m pytest tests/ --cov=utils --cov-report=html --cov-report=term
+
+# Run tests for a specific module
+test-dashboard:
+	python -m pytest tests/test_dashboard_utils.py -v
+
+test-data:
+	python -m pytest tests/test_data_utils.py -v
+
+test-plot:
+	python -m pytest tests/test_plot_utils.py -v
+
+test-integration:
+	python -m pytest tests/test_integration.py -v
 
 clean:
 	docker compose down --rmi all --volumes --remove-orphans

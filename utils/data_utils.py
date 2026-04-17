@@ -711,7 +711,9 @@ def load_covered_buildings() -> pd.DataFrame:
     if not csv_files:
         raise FileNotFoundError(f"No CSV files found in {path}")
 
-    load_dfs = [pd.read_csv(file) for file in csv_files]
+    # Load CSVs in parallel for faster performance
+    with ThreadPoolExecutor() as executor:
+        load_dfs = list(executor.map(pd.read_csv, csv_files))
     covered_df = pd.concat(load_dfs, ignore_index=True)
 
     # Normalize column names once here to match your benchmarking data
@@ -1775,11 +1777,18 @@ def load_major_us_cities() -> dict[str, pd.DataFrame]:
 
     csv_files = sorted(path.glob("*.csv"))
 
-    for file in csv_files:
+    # Load city CSVs in parallel for faster performance
+    def load_city_file(file: Path) -> tuple[str, pd.DataFrame]:
+        """Load a single city CSV file."""
         df_city = pd.read_csv(file, low_memory=False)
-        key = file.stem
-        city_data[key] = df_city
         logger.info("Loaded %s → %s", file.name, df_city.shape)
+        return file.stem, df_city
+
+    with ThreadPoolExecutor() as executor:
+        results = list(executor.map(load_city_file, csv_files))
+
+    for key, df_city in results:
+        city_data[key] = df_city
 
     boston_folder = path / "Boston_data"
     if boston_folder.exists():
@@ -2184,8 +2193,8 @@ def load_boston_energy_data(
             f"No CSV/XLSX files found in Boston folder: {folder_path.resolve()}"
         )
 
-    frames: list[pd.DataFrame] = []
-    for path in files:
+    def process_boston_file(path: Path) -> pd.DataFrame:
+        """Process a single Boston file with metadata."""
         boston_df = _read_boston_file(path)
         boston_df["City"] = city_name
         boston_df["source_file"] = path.name
@@ -2195,7 +2204,11 @@ def load_boston_energy_data(
             if inferred is not None:
                 boston_df[year_col] = inferred
 
-        frames.append(boston_df)
+        return boston_df
+
+    # Load Boston files in parallel for faster performance
+    with ThreadPoolExecutor() as executor:
+        frames = list(executor.map(process_boston_file, files))
 
     out = pd.concat(frames, ignore_index=True, sort=False)
 

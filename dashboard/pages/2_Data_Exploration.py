@@ -9,12 +9,14 @@ from utils.dashboard_utils import (
     cache_energy_data,
     cache_full_data,
     cache_geojson,
+    load_clean_energy_data_for_dashboards,
     metric_list,
     precompute_animation_maps,
     render_dashboard_section,
     render_yearly_map,
     year_lists,
 )
+from utils.data_utils import add_top_level_property_type
 
 # -------------------- Page Setup --------------------
 apply_page_config()
@@ -87,6 +89,8 @@ yearly_maps = precompute_animation_maps(years_list, geojson_data, full_data, log
 
 # --- Full Data Animation ---
 with col1:
+    st.markdown("#### 📊 All Buildings (Animated)")
+    st.caption("Shows all buildings that reported data in each year")
     animation_placeholder = st.empty()
 
     if st.session_state.playing:
@@ -99,8 +103,10 @@ with col1:
                     yearly_maps[current_year],
                     use_container_width=True,
                 )
-                st.progress(st.session_state.current_index / (len(years_list) - 1))
-                st.caption(f"{st.session_state.current_index + 1} of {len(years_list)}")
+                st.progress(
+                    st.session_state.current_index / (len(years_list) - 1),
+                    text=f"Year {current_year} ({st.session_state.current_index + 1}/{len(years_list)})"
+                )
             time.sleep(1)
             st.session_state.current_index += 1
             if st.session_state.current_index >= len(years_list):
@@ -114,8 +120,10 @@ with col1:
                 use_container_width=True,
             )
 
-# --- Concurrent Buildings Static Map ---
+# --- Complete-Data Buildings Static Map ---
 with col2:
+    st.markdown("#### 🏢 Buildings with Complete Data (Static)")
+    st.caption("Only buildings that reported in every year from 2016 to 2023")
     st.altair_chart(
         render_yearly_map(None, geojson_data, energy_data, log_scale),
         use_container_width=True,
@@ -126,8 +134,21 @@ st.divider()
 
 #  #-------------------------------------------------------------------
 
+st.markdown("### 📈 Metric Explorer")
+st.markdown(
+    "Select a metric and classification category to explore geographic patterns, "
+    "distributions, and trends over time."
+)
+st.markdown("")
+
+explorer_data = load_clean_energy_data_for_dashboards(
+    restrict_to_concurrent=True, concurrent_start=2016, concurrent_end=2023
+)
+explorer_data = add_top_level_property_type(explorer_data)
+
 render_dashboard_section(
     metric_list=metrics_list,
+    energy_data=explorer_data,
     geojson_data=cache_geojson(),
     key_prefix="Variable",
 )

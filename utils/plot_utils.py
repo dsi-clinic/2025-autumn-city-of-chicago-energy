@@ -2134,15 +2134,16 @@ def plot_compliance_status_facets(
     n_submitted_col: str,
     n_exempt_col: str,
     n_not_submitted_col: str,
-) -> alt.Chart:
-    """Create a horizontally concatenated stacked bar chart of reporting status by year and group.
+) -> list[alt.Chart]:
+    """Return one stacked bar chart per year for rendering in Streamlit columns.
 
-    The chart shows one panel per year (side by side), with bars grouped by
-    `group_col` on the x-axis and stacked by reporting status
-    ("Submitted", "Exempt", "Not submitted") with counts on the y-axis.
+    Each chart shows bars grouped by `group_col` on the x-axis and stacked by
+    reporting status ("Submitted", "Exempt", "Not submitted") with counts on the
+    y-axis. Returning individual charts (rather than a concatenated spec) lets
+    each panel fill its Streamlit column and scale adaptively with window width.
     """
     if df.empty:
-        return alt.Chart().mark_bar()
+        return []
 
     df_long = df.rename(
         columns={
@@ -2178,16 +2179,10 @@ def plot_compliance_status_facets(
             ],
         )
         .mark_bar()
-        .properties(height=250)
+        .properties(height=350)
     )
 
-    years = sorted(df[year_col].unique())
-    panels = []
-    for year in years:
-        panel = base.transform_filter(alt.datum[year_col] == year).properties(
-            title=str(year)
-        )
-        panels.append(panel)
-
-    chart = alt.hconcat(*panels, title=alt.TitleParams("Data Year"))
-    return chart
+    return [
+        base.transform_filter(alt.datum[year_col] == year).properties(title=str(year))
+        for year in sorted(df[year_col].unique())
+    ]

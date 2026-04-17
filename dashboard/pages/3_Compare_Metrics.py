@@ -24,6 +24,12 @@ apply_page_config()
 start = time.time()
 st.title("Comparison Dashboard")
 
+st.markdown(
+    "Compare any two energy metrics side-by-side to identify patterns, "
+    "correlations, and geographic variations across Chicago buildings."
+)
+st.markdown("")
+
 # -------------------- Load Data --------------------
 full_data = cache_full_data()
 energy_data = cache_energy_data()
@@ -57,7 +63,9 @@ st.divider()
 
 # COMPARE METRIC TRENDS OVER TIME #-------------------------------------------------------------------
 
-st.markdown("### Compare Metric Trends over Time")
+st.markdown("### 📊 Metric Trends Over Time")
+st.markdown("*Average values across all buildings, by year*")
+st.markdown("")
 
 col1, col2 = st.columns(2)
 
@@ -78,11 +86,21 @@ with col2:
 st.divider()
 
 # COMPARE METRIC GEOGRAPHIC TRENDS #-------------------------------------------------------------------
-st.markdown("### Compare Metric Geographic Trends")
+st.markdown("### 🗺️ Geographic Distribution")
+st.markdown("*Average values by Chicago community area*")
+st.markdown("")
 
 map_filtered_df = energy_data.copy()
 
-trend_year = st.selectbox("Filter to specific year:", full_year_list, key="energy_year")
+st.markdown("**Select Year for Geographic View**")
+col1, col2, col3 = st.columns([2, 4, 4])
+with col1:
+    trend_year = st.selectbox(
+        "Year:",
+        full_year_list,
+        key="energy_year",
+        help="Choose a specific year or view average across all years"
+    )
 
 if trend_year != "Average (All Years)":
     if "Chicago Energy Rating" in [selected1, selected2]:

@@ -1,7 +1,7 @@
 # Loading the Streamlit Dashboard
 
 Commands to run in terminal
-1. cd src/dashboard
+1. cd dashboard
     - Should be in the dashboard folder
 2. streamlit run Introduction.py
 

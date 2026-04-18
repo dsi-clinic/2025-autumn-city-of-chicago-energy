@@ -96,11 +96,13 @@ def cache_covered_buildings() -> pd.DataFrame:
     return covered_df
 
 
-@st.cache_data
+@st.cache_resource
 def cache_geojson(tolerance: float = 0.00259) -> dict:
     """Caching geojson data.
 
-    Default tolerance is 0.00259 from balancing from appearence and rendering time
+    Default tolerance is 0.00259 from balancing from appearence and rendering time.
+    Uses cache_resource because geojson is a large, immutable read-only asset —
+    avoids the pickle/unpickle overhead of cache_data on every cache hit.
     """
     geojson_data = load_neighborhood_geojson()
     gdf = gpd.GeoDataFrame.from_features(geojson_data["features"])
@@ -128,9 +130,13 @@ def cache_community_geojson_url(tolerance: float = 0.00259) -> str:
     return geojson_to_data_url(geo)
 
 
-@st.cache_data
+@st.cache_resource
 def cache_community_geojson(tolerance: float = 0.00259) -> dict:
-    """Cache community area geojson of Chicago."""
+    """Cache community area geojson of Chicago.
+
+    Uses cache_resource because geojson is a large, immutable read-only asset —
+    avoids the pickle/unpickle overhead of cache_data on every cache hit.
+    """
     geojson_data = load_community_geojson()
     gdf = gpd.GeoDataFrame.from_features(geojson_data["features"])
 
@@ -225,6 +231,17 @@ def cache_build_all_aggregates(
 
 
 @st.cache_data
+def cache_aggregate_metric(dff: pd.DataFrame, metric: str) -> pd.DataFrame:
+    """Cached wrapper around :func:`aggregate_metric`.
+
+    The underlying groupby is small but recomputed on every Streamlit rerun
+    (i.e. every widget interaction). Caching the result keyed on (df, metric)
+    avoids redoing the groupby when the user only changes an unrelated control.
+    """
+    return aggregate_metric(dff, metric)
+
+
+@st.cache_data
 def cache_build_all_year_charts(
     agg_data: dict[str, pd.DataFrame], geojson: dict
 ) -> dict[str, alt.Chart]:
@@ -281,6 +298,20 @@ def render_yearly_map(
     return alt.layer(base, overlay).properties(height=500)
 
 
+@st.cache_data
+def precompute_animation_maps(
+    years: list[int], geojson_data: dict, data: pd.DataFrame, log_scale: bool = False
+) -> dict[int, alt.Chart]:
+    """Pre-compute all yearly maps for smooth animation without page reloads.
+
+    This function caches the expensive map generation, enabling smooth animation
+    by only updating the container content rather than triggering full page reloads.
+    """
+    return {
+        year: render_yearly_map(year, geojson_data, data, log_scale) for year in years
+    }
+
+
 # grouped charts #-------------------------------------------------------------------s
 
 
@@ -312,71 +343,49 @@ def render_dashboard_section(
         _, full_year_list = year_lists()
     if geojson_data is None:
         geojson_data = cache_geojson()
-    # Layout rows
-    trend_row1 = st.columns(2)
-    trend_row2 = st.columns(2)
-
     # Filters ---------------------------------------------------------------
-    with trend_row1[0]:
-        years_build = sorted(
-            [int(year) for year in energy_data["Year Built"].dropna().unique()]
+    with st.container(border=True):
+        st.markdown(
+            '<p style="color:#1e3a5f;font-weight:600;font-size:1rem;margin:0 0 0.5rem 0;">Filter & Metric Selection</p>',
+            unsafe_allow_html=True,
         )
-        year_range = st.slider(
-            "Select Range of Year Built",
-            min_value=min(years_build),
-            max_value=max(years_build),
-            value=(min(years_build), max(years_build)),
-            step=1,
-            key=f"{key_prefix}_slider",
-        )
-
-    with trend_row1[1]:
-        trend_year = st.selectbox(
-            "Trend Year for Map", full_year_list, key=f"{key_prefix}_year"
+        _, sel_time_built, sel_ppt, sel_tlpt, sel_ca = build_standard_filters(
+            energy_data,
+            include_top_level=True,
+            page_prefix=key_prefix,
+            include_category_selector=False,
         )
 
-    with trend_row2[0]:
-        trend_building_type = st.selectbox(
-            "Building Type Selection",
-            ["All"] + sorted(energy_data["Primary Property Type"].dropna().unique()),
-            key=f"{key_prefix}_build",
-        )
+        fcol1, fcol2 = st.columns(2)
+        with fcol1:
+            trend_year = st.selectbox(
+                "Trend Year for Map", full_year_list, key=f"{key_prefix}_year"
+            )
+        with fcol2:
+            metric = st.selectbox(
+                f"Choose {key_prefix}:", metric_list, key=f"{key_prefix}_metric"
+            )
 
-    with trend_row2[1]:
-        trend_neighborhood = st.selectbox(
-            "Community Area Selection",
-            ["All"] + sorted(energy_data["Community Area"].dropna().unique()),
-            key=f"{key_prefix}_comm",
-        )
-
-    metric = st.selectbox(
-        f"Choose {key_prefix}:", metric_list, key=f"{key_prefix}_metric"
+    # Apply filters ---------------------------------------------------------
+    filtered_df = filter_energy_by_selections(
+        energy_data,
+        sel_time_built=sel_time_built,
+        sel_ppt=sel_ppt,
+        sel_ca=sel_ca,
+        sel_tlpt=sel_tlpt,
     )
 
-    # Main filter -----------------------------------------------------------
-    year_built_df = energy_data[
-        (energy_data["Year Built"] >= year_range[0])
-        & (energy_data["Year Built"] <= year_range[1])
-    ]
+    if filtered_df.empty:
+        st.warning(
+            "No buildings match the selected filters. Please broaden your selections."
+        )
+        st.stop()
 
-    map_filtered = year_built_df.copy()
-    if trend_neighborhood != "All":
-        map_filtered = map_filtered[
-            map_filtered["Community Area"] == trend_neighborhood
-        ]
-    if trend_building_type != "All":
-        map_filtered = map_filtered[
-            map_filtered["Primary Property Type"] == trend_building_type
-        ]
+    map_filtered = filtered_df.copy()
     if trend_year != "Average (All Years)":
         map_filtered = map_filtered[map_filtered["Data Year"] == int(trend_year)]
 
-    # Bar filter
-    if trend_neighborhood != "All":
-        com_df = year_built_df[year_built_df["Community Area"] == trend_neighborhood]
-    else:
-        com_df = year_built_df
-    com_df = com_df[com_df[metric].notna()]
+    com_df = filtered_df[filtered_df[metric].notna()]
 
     # Graphs ---------------------------------------------------------------
     col1, col2 = st.columns(2)
@@ -387,7 +396,7 @@ def render_dashboard_section(
     with col1:
         # Map
         map_year_arg = None if trend_year == "Average (All Years)" else int(trend_year)
-        agg_df = aggregate_metric(map_filtered, metric)
+        agg_df = cache_aggregate_metric(map_filtered, metric)
         map_chart = plot_choropleth(
             geojson_data, agg_df, metric, year=map_year_arg
         ).properties(height=500)
@@ -395,9 +404,7 @@ def render_dashboard_section(
         st.markdown("<div style='margin-bottom:20px;'></div>", unsafe_allow_html=True)
 
         # Trend Line Plot
-        st.markdown(
-            f"##### Trend over time of {metric} by Year Built in {trend_neighborhood}"
-        )
+        st.markdown(f"##### Trend over time of {metric}")
         fig2, ax2 = plot_trend_by_year(com_df, [metric], "mean")[0]
         ax2.set_title("")
 
@@ -406,7 +413,7 @@ def render_dashboard_section(
 
     with col2:
         # Bar Chart
-        st.markdown(f"##### Average {metric} by Property Type in {trend_neighborhood}")
+        st.markdown(f"##### Average {metric} by Property Type")
         com_df_b = (
             com_df
             if trend_year == "Average (All Years)"
@@ -475,38 +482,58 @@ def load_clean_energy_data_for_dashboards(
 
 def filter_energy_by_selections(
     energy_df: pd.DataFrame,
-    sel_time_built: list[str],
-    sel_ppt: list[str],
-    sel_ca: list[str],
-    sel_tlpt: list[str] | None = None,
+    sel_time_built: list[str] | str,
+    sel_ppt: list[str] | str,
+    sel_ca: list[str] | str,
+    sel_tlpt: list[str] | str | None = None,
 ) -> pd.DataFrame:
-    """Filter the energy dataframe by standard selection lists.
+    """Filter the energy dataframe by standard selection lists or single values.
 
     Parameters
     ----------
     energy_df :
         Input dataframe to filter.
     sel_time_built :
-        Selected Time Built categories.
+        Selected Time Built categories (list or single string).
+        If "All", includes all values.
     sel_ppt :
-        Selected Primary Property Type values.
+        Selected Primary Property Type values (list or single string).
+        If "All", includes all values.
     sel_ca :
-        Selected Community Area values.
+        Selected Community Area values (list or single string).
+        If "All", includes all values.
     sel_tlpt :
-        Selected Top Level Property Type values, or None to skip this filter.
+        Selected Top Level Property Type values (list or single string),
+        or None to skip this filter. If "All", includes all values.
 
     Returns:
     -------
     pd.DataFrame
         Filtered dataframe respecting all non‑None selections.
     """
+
+    def normalize_selection(sel: list[str] | str, column_name: str) -> list[str]:
+        """Convert string to list and handle 'All' special case."""
+        if sel == "All":
+            return energy_df[column_name].dropna().unique().tolist()
+        if isinstance(sel, str):
+            return [sel]
+        return sel
+
+    # Normalize all selections to lists
+    time_built_list = normalize_selection(sel_time_built, "Time Built")
+    ppt_list = normalize_selection(sel_ppt, "Primary Property Type")
+    ca_list = normalize_selection(sel_ca, "Community Area")
+
     mask = (
-        energy_df["Time Built"].isin(sel_time_built)
-        & energy_df["Primary Property Type"].isin(sel_ppt)
-        & energy_df["Community Area"].isin(sel_ca)
+        energy_df["Time Built"].isin(time_built_list)
+        & energy_df["Primary Property Type"].isin(ppt_list)
+        & energy_df["Community Area"].isin(ca_list)
     )
+
     if sel_tlpt is not None:
-        mask &= energy_df["Top Level Property Type"].isin(sel_tlpt)
+        tlpt_list = normalize_selection(sel_tlpt, "Top Level Property Type")
+        mask &= energy_df["Top Level Property Type"].isin(tlpt_list)
 
     return energy_df[mask]
 
@@ -515,55 +542,77 @@ def build_standard_filters(
     energy_df: pd.DataFrame,
     include_top_level: bool = True,
     page_prefix: str = "filters",
-) -> tuple[str, list[str], list[str], list[str], list[str]]:
-    """Create standard classification + multiselect filters in Streamlit."""
-    # Define category options for the classification dropdown
-    category_options = [
-        "Time Built",
-        "Primary Property Type",
-        "Community Area",
-        "Top Level Property Type",
-    ]
-    category_col = st.selectbox(
-        "Select category for Building Classification",
-        options=category_options,
-        index=category_options.index("Time Built"),
-        key=f"{page_prefix}_category_select",
-    )
+    include_category_selector: bool = True,
+) -> tuple[str | None, list[str], list[str], list[str], list[str]]:
+    """Create standard classification + multiselect filters in Streamlit.
+
+    When ``include_category_selector`` is False, the category dropdown is
+    omitted and None is returned as the first element of the tuple. Use this
+    when the calling page already exposes a category selector elsewhere.
+    """
+    # Display-friendly labels for category options
+    _category_display = {
+        "Top Level Property Type": "Top-Level Type",
+        "Primary Property Type": "Sub-Type",
+        "Time Built": "Time Built",
+        "Community Area": "Community Area",
+    }
+
+    if include_category_selector:
+        category_options = [
+            "Top Level Property Type",
+            "Primary Property Type",
+            "Time Built",
+            "Community Area",
+        ]
+        category_col = st.selectbox(
+            "Classify buildings by",
+            options=category_options,
+            index=category_options.index("Time Built"),
+            format_func=lambda c: _category_display.get(c, c),
+            key=f"{page_prefix}_category_select",
+        )
+    else:
+        category_col = None
 
     col1, col2, col3, col4 = st.columns(4)
 
-    with col1:
+    if include_top_level:
+        with col1:
+            tlpt_opts = sorted(
+                energy_df["Top Level Property Type"].dropna().unique().tolist()
+            )
+            sel_tlpt = st.multiselect(
+                "Top-Level Type",
+                options=tlpt_opts,
+                default=tlpt_opts,
+                key=f"{page_prefix}_tlpt",
+                help="Broad building use category (e.g. Commercial, Residential)",
+            )
+        ppt_col = col2
+    else:
+        sel_tlpt = []
+        ppt_col = col1
+
+    with ppt_col:
+        ppt_opts = sorted(energy_df["Primary Property Type"].dropna().unique().tolist())
+        sel_ppt = st.multiselect(
+            "Sub-Type",
+            options=ppt_opts,
+            default=ppt_opts,
+            key=f"{page_prefix}_ppt",
+            help="Detailed property type (e.g. Office, Hospital, K-12 School)",
+        )
+
+    with col3:
         time_built_opts = sorted(energy_df["Time Built"].dropna().unique().tolist())
         sel_time_built = st.multiselect(
             "Time Built",
             options=time_built_opts,
             default=time_built_opts,
             key=f"{page_prefix}_time_built",
+            help="Era when the building was constructed",
         )
-
-    with col2:
-        ppt_opts = sorted(energy_df["Primary Property Type"].dropna().unique().tolist())
-        sel_ppt = st.multiselect(
-            "Primary Property Type",
-            options=ppt_opts,
-            default=ppt_opts,
-            key=f"{page_prefix}_ppt",
-        )
-
-    if include_top_level:
-        with col3:
-            tlpt_opts = sorted(
-                energy_df["Top Level Property Type"].dropna().unique().tolist()
-            )
-            sel_tlpt = st.multiselect(
-                "Top Level Property Type",
-                options=tlpt_opts,
-                default=tlpt_opts,
-                key=f"{page_prefix}_tlpt",
-            )
-    else:
-        sel_tlpt = []
 
     with col4:
         ca_opts = sorted(energy_df["Community Area"].dropna().unique().tolist())
@@ -572,9 +621,83 @@ def build_standard_filters(
             options=ca_opts,
             default=ca_opts,
             key=f"{page_prefix}_community_area",
+            help="Chicago community area where the building is located",
         )
 
     return category_col, sel_time_built, sel_ppt, sel_tlpt, sel_ca
+
+
+def show_helpful_filter_error(
+    filtered_df: pd.DataFrame,
+    original_df: pd.DataFrame,
+    filter_selections: dict[str, any],
+) -> None:
+    """Display actionable error message when filters produce no results.
+
+    Args:
+        filtered_df: The filtered DataFrame (empty)
+        original_df: The original unfiltered DataFrame
+        filter_selections: Dict mapping filter names to selected values
+            Example: {
+                "Time Built": ["Pre-1945", "1945-1969"],
+                "Primary Property Type": ["Office"],
+                "Community Area": ["Loop"],
+            }
+    """
+    st.error("### ⚠️ No buildings match your current filter selections")
+
+    st.markdown(
+        "Your filters are too restrictive. Try broadening your selections to see data."
+    )
+
+    # Show current filter settings in an expander
+    with st.expander("📋 Current Filter Settings", expanded=True):
+        for filter_name, selected_values in filter_selections.items():
+            if isinstance(selected_values, list):
+                if len(selected_values) == 0:
+                    st.markdown(f"- **{filter_name}**: ❌ None selected")
+                else:
+                    st.markdown(
+                        f"- **{filter_name}**: {', '.join(map(str, selected_values))}"
+                    )
+            else:
+                st.markdown(f"- **{filter_name}**: {selected_values}")
+
+    # Identify which filter is most restrictive
+    st.markdown("### 💡 Suggestions:")
+
+    filter_match_counts = {}
+    for filter_name, selected_values in filter_selections.items():
+        if isinstance(selected_values, list) and len(selected_values) > 0:
+            # For multi-select filters
+            matching_count = original_df[
+                original_df[filter_name].isin(selected_values)
+            ].shape[0]
+            filter_match_counts[filter_name] = matching_count
+        elif not isinstance(selected_values, list) and selected_values != "All":
+            # For single-select filters
+            matching_count = original_df[
+                original_df[filter_name] == selected_values
+            ].shape[0]
+            filter_match_counts[filter_name] = matching_count
+
+    if filter_match_counts:
+        most_restrictive = min(filter_match_counts, key=filter_match_counts.get)
+        st.markdown(
+            f"- **Most restrictive filter**: `{most_restrictive}` "
+            f"(only {filter_match_counts[most_restrictive]:,} buildings match)"
+        )
+        st.markdown(
+            f"- **Recommendation**: Try selecting more values for `{most_restrictive}`"
+        )
+
+    # Show quick actions
+    st.markdown("### 🔧 Quick Actions:")
+    st.markdown(
+        "1. Use the **filter selectors above** to broaden your choices\n"
+        "2. Select **'All'** for filters you don't need\n"
+        "3. Try a **different combination** of filters"
+    )
 
 
 def aggregate_compliance_over_time(
@@ -613,21 +736,21 @@ def choose_compliance_metric() -> tuple[str, str]:
     metric_option = st.selectbox(
         "Compliance metric",
         options=[
-            "Share submitted",
-            "Share non‑compliant",
-            "Number submitted",
-            "Number non‑compliant",
+            "% of Buildings That Reported",
+            "% of Buildings That Did Not Report",
+            "Number of Buildings That Reported",
+            "Number of Buildings That Did Not Report",
         ],
         index=0,
     )
 
-    if metric_option == "Share submitted":
-        return "share_submitted", "Share submitted"
-    if metric_option == "Share non‑compliant":
-        return "share_non_compliant", "Share non‑compliant"
-    if metric_option == "Number submitted":
-        return "n_submitted", "Submitted buildings"
-    return "n_non_compliant", "Non‑compliant buildings"
+    if metric_option == "% of Buildings That Reported":
+        return "share_submitted", "% of Buildings That Reported"
+    if metric_option == "% of Buildings That Did Not Report":
+        return "share_non_compliant", "% of Buildings That Did Not Report"
+    if metric_option == "Number of Buildings That Reported":
+        return "n_submitted", "Number of Buildings That Reported"
+    return "n_non_compliant", "Number of Buildings That Did Not Report"
 
 
 def apply_category_filter(

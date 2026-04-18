@@ -6,15 +6,14 @@ import streamlit as st
 
 from utils.dashboard_utils import (
     apply_page_config,
+    cache_aggregate_metric,
     cache_energy_data,
-    cache_full_data,
     cache_geojson,
     metric_list,
     style_matplotlib,
     year_lists,
 )
 from utils.plot_utils import (
-    aggregate_metric,
     plot_choropleth,
     plot_trend_by_year,
 )
@@ -22,10 +21,15 @@ from utils.plot_utils import (
 # -------------------- Page Setup --------------------
 apply_page_config()
 start = time.time()
-st.title("Comparison Dashboard")
+st.title("Compare Energy Metrics")
+
+st.markdown(
+    "Pick two energy metrics to compare side-by-side. See how they change over time "
+    "and vary across Chicago neighborhoods."
+)
+st.markdown("")
 
 # -------------------- Load Data --------------------
-full_data = cache_full_data()
 energy_data = cache_energy_data()
 geojson_data = cache_geojson()
 metrics_list = metric_list()
@@ -57,7 +61,9 @@ st.divider()
 
 # COMPARE METRIC TRENDS OVER TIME #-------------------------------------------------------------------
 
-st.markdown("### Compare Metric Trends over Time")
+st.markdown("### 📊 How Have These Metrics Changed Over Time?")
+st.caption("Average for all buildings, by year")
+st.markdown("")
 
 col1, col2 = st.columns(2)
 
@@ -78,11 +84,21 @@ with col2:
 st.divider()
 
 # COMPARE METRIC GEOGRAPHIC TRENDS #-------------------------------------------------------------------
-st.markdown("### Compare Metric Geographic Trends")
+st.markdown("### 🗺️ How Do These Metrics Vary by Neighborhood?")
+st.caption("Average by Chicago community area")
+st.markdown("")
 
 map_filtered_df = energy_data.copy()
 
-trend_year = st.selectbox("Filter to specific year:", full_year_list, key="energy_year")
+st.markdown("**Select Year for Geographic View**")
+col1, col2, col3 = st.columns([2, 4, 4])
+with col1:
+    trend_year = st.selectbox(
+        "Year:",
+        full_year_list,
+        key="energy_year",
+        help="Choose a specific year or view average across all years",
+    )
 
 if trend_year != "Average (All Years)":
     if "Chicago Energy Rating" in [selected1, selected2]:
@@ -97,13 +113,13 @@ else:
 
 col1, col2 = st.columns(2)
 with col1:
-    agg_df = aggregate_metric(map_filtered_df, selected1)
+    agg_df = cache_aggregate_metric(map_filtered_df, selected1)
 
     eng_map = plot_choropleth(geojson_data, agg_df, selected1, year=map_year_arg)
     st.altair_chart(eng_map, use_container_width=True)
 
 with col2:
-    agg_df = aggregate_metric(map_filtered_df, selected2)
+    agg_df = cache_aggregate_metric(map_filtered_df, selected2)
 
     eng_map = plot_choropleth(geojson_data, agg_df, selected2, year=map_year_arg)
     st.altair_chart(eng_map, use_container_width=True)

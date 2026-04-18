@@ -21,9 +21,12 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import streamlit as st
 from statsmodels.regression.linear_model import RegressionResultsWrapper
 
 from utils.fix_effect_utils import extract_model_coefficients
+
+logger = logging.getLogger(__name__)
 
 
 def _geo_data(geo: dict) -> dict:
@@ -1024,6 +1027,7 @@ def plot_energy_persistence_by_year(
     end_year: int = 2023,
     width: int = 320,
     height: int = 320,
+    metric_label: str = None,
 ) -> alt.Chart:
     """Create a 2×3 grid of scatter plots showing Δ N→N+1 vs Δ N+1→N+2 per base year N.
 
@@ -1079,6 +1083,8 @@ def plot_energy_persistence_by_year(
         empty="all",
     )
 
+    _unit = metric_label if metric_label else "value"
+
     def make_chart(year: int) -> alt.Chart:
         df_year = data[data["N_year"] == year]
         if df_year.empty:
@@ -1087,10 +1093,8 @@ def plot_energy_persistence_by_year(
             alt.Chart(df_year)
             .mark_circle(size=55)
             .encode(
-                x=alt.X(f"{delta_col}:Q", title=f"Δ {year}→{year+1} (kBtu/sq ft)"),
-                y=alt.Y(
-                    f"{delta_next_col}:Q", title=f"Δ {year+1}→{year+2} (kBtu/sq ft)"
-                ),
+                x=alt.X(f"{delta_col}:Q", title=f"Δ {year}→{year+1} ({_unit})"),
+                y=alt.Y(f"{delta_next_col}:Q", title=f"Δ {year+1}→{year+2} ({_unit})"),
                 color=alt.condition(
                     type_select, f"{property_col}:N", alt.value("lightgray")
                 ),
@@ -1169,6 +1173,7 @@ def plot_energy_persistence_rows(
     width: int = 320,
     height: int = 320,
     selected_category: str = None,
+    metric_label: str = None,
 ) -> list[alt.HConcatChart]:
     """Return a list of row charts (each row is an hconcat of years)."""
     data = df_lagged.dropna(subset=[delta_col, delta_next_col]).copy()
@@ -1182,6 +1187,8 @@ def plot_energy_persistence_rows(
     if not years:
         return []
 
+    _unit = metric_label if metric_label else "value"
+
     type_select = alt.selection_point(
         fields=[property_col],
         empty="all",
@@ -1192,8 +1199,8 @@ def plot_energy_persistence_rows(
         if df_year.empty:
             return alt.Chart().mark_text(text="").properties(width=width, height=height)
 
-        x_title = f"Δ {year}→{year+1} (kBtu/sq ft)"
-        y_title = f"Δ {year+1}→{year+2} (kBtu/sq ft)"
+        x_title = f"Δ {year}→{year+1} ({_unit})"
+        y_title = f"Δ {year+1}→{year+2} ({_unit})"
 
         scatter = (
             alt.Chart(df_year)
@@ -1269,12 +1276,89 @@ def prepare_geojson(geojson: dict) -> pd.DataFrame:
 
 
 # help plottting spatial maps by aggregate mean metrics
+@st.cache_data
 def aggregate_metric(dff: pd.DataFrame, metric: str) -> pd.DataFrame:
-    """Aggregate a given metric by Community Area and Data Year using Mean."""
+    """Aggregate a given metric by Community Area and Data Year using Mean.
+
+    Args:
+        dff: DataFrame containing the data to aggregate
+        metric: Name of the metric column to aggregate
+
+    Returns:
+        DataFrame with columns: Neighborhood, Data Year, and the aggregated metric
+
+    Raises:
+        ValueError: If input validation fails
+    """
+    # Validation 1: Check if DataFrame is empty
+    if dff is None or dff.empty:
+        logger.warning("aggregate_metric called with empty DataFrame")
+        return pd.DataFrame(columns=["Neighborhood", "Data Year", metric])
+
+    # Validation 2: Check required columns exist
+    required_cols = ["Community Area"]
+    missing_cols = [col for col in required_cols if col not in dff.columns]
+
+    if missing_cols:
+        logger.error(f"Missing required columns: {missing_cols}")
+        raise ValueError(
+            f"DataFrame must contain columns: {required_cols}. "
+            f"Missing: {missing_cols}. "
+            f"Available columns: {list(dff.columns)}"
+        )
+
+    # Validation 3: Check metric column exists
+    if metric not in dff.columns:
+        available_metrics = [
+            col
+            for col in dff.columns
+            if col
+            not in ["ID", "Property Name", "Address", "Community Area", "Neighborhood"]
+        ]
+        _max_display = 10
+        logger.error(f"Metric '{metric}' not found in DataFrame columns")
+        raise ValueError(
+            f"Metric column '{metric}' not found in DataFrame. "
+            f"Available metric columns: {available_metrics[:_max_display]}"
+            + (
+                f" (and {len(available_metrics) - _max_display} more)"
+                if len(available_metrics) > _max_display
+                else ""
+            )
+        )
+
+    # Core aggregation logic
     dff = dff.dropna(subset=["Community Area", metric]).copy()
+
+    # Check if data remains after dropping NAs
+    if dff.empty:
+        logger.warning(
+            f"No valid data remaining after dropping NAs for Community Area and {metric}"
+        )
+        return pd.DataFrame(columns=["Neighborhood", "Data Year", metric])
+
     dff["Neighborhood"] = dff["Community Area"].str.strip().str.title()
+
+    # Validation 4: Track numeric conversion failures
+    original_count = len(dff)
     dff[metric] = pd.to_numeric(dff[metric], errors="coerce")
+    valid_count = dff[metric].notna().sum()
+    conversion_failures = original_count - valid_count
+
+    if conversion_failures > 0:
+        failure_rate = (conversion_failures / original_count) * 100
+        logger.warning(
+            f"Numeric conversion: {conversion_failures} failures out of {original_count} "
+            f"({failure_rate:.1f}%) for metric '{metric}'"
+        )
+
+    # Final aggregation
     grouped = dff.groupby(["Neighborhood", "Data Year"], as_index=False)[metric].mean()
+
+    # Validation 5: Check if aggregation produced results
+    if grouped.empty:
+        logger.warning(f"Aggregation produced no results for metric '{metric}'")
+
     return grouped
 
 
@@ -2061,15 +2145,16 @@ def plot_compliance_status_facets(
     n_submitted_col: str,
     n_exempt_col: str,
     n_not_submitted_col: str,
-) -> alt.Chart:
-    """Create a horizontally concatenated stacked bar chart of reporting status by year and group.
+) -> list[alt.Chart]:
+    """Return one stacked bar chart per year for rendering in Streamlit columns.
 
-    The chart shows one panel per year (side by side), with bars grouped by
-    `group_col` on the x-axis and stacked by reporting status
-    ("Submitted", "Exempt", "Not submitted") with counts on the y-axis.
+    Each chart shows bars grouped by `group_col` on the x-axis and stacked by
+    reporting status ("Submitted", "Exempt", "Not submitted") with counts on the
+    y-axis. Returning individual charts (rather than a concatenated spec) lets
+    each panel fill its Streamlit column and scale adaptively with window width.
     """
     if df.empty:
-        return alt.Chart().mark_bar()
+        return []
 
     df_long = df.rename(
         columns={
@@ -2105,16 +2190,10 @@ def plot_compliance_status_facets(
             ],
         )
         .mark_bar()
-        .properties(height=250)
+        .properties(height=350)
     )
 
-    years = sorted(df[year_col].unique())
-    panels = []
-    for year in years:
-        panel = base.transform_filter(alt.datum[year_col] == year).properties(
-            title=str(year)
-        )
-        panels.append(panel)
-
-    chart = alt.hconcat(*panels, title=alt.TitleParams("Data Year"))
-    return chart
+    return [
+        base.transform_filter(alt.datum[year_col] == year).properties(title=str(year))
+        for year in sorted(df[year_col].unique())
+    ]

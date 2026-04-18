@@ -15,3 +15,16 @@ This folder contains:
 * `visualization_by_year_and_exploratory_correlation.ipynb` contains visualization of metrics by year and correlation summary
 * `within_building_variation.ipynb` contains visualizations of building-level energy change over year, distribution of pre-2019 and post-2019, and within-building fixed effect model, estimating the energy changes within building over time.
 * `year_built_groupings.ipynb` contains grouping of year built as well as visualizations for year-over-year changes
+
+Within fix_effects_notebooks: Folder was made to group fixed effect testing
+* `fixed_effects.ipynb` contains initial exploration of using fixed effects for explination site EUI with Chicago Star Rating
+* `fixed_effects_validation.ipynb` contains process of trying to validate the findings of fixed_effects.ipynb by adding more variables
+* `fixed_effects_energy_rating.ipynb` Better visualizing the graphs in fixed_effects_validation.ipynb to show coeffiecent differences and further understanding trends
+* `time_series_data_quality.ipynb` Exploring the quality of the data that would be used in the time series notebooks
+* `time_series_naive.ipynb` Starting initial time series with naive structure 
+* `time_series_features.ipynb` Using the naive time series model and added more features to better understand what explains energy use
+* `time_series_local_change.ipynb` Created a new variable to better capture a buildings energy use in comparisons to the city trend
+* `time_series_local_change_interaction.ipynb` Used the time series local change model to explore which features of a building explains the buildings energy trends
+* `cities_vs_chicago_I.ipynb` contains exploratory comparison of Chicago energy trends with peer cities, including initial data preparation and visualizations of cross-city Site EUI patterns.
+* `city_vs_chicago_II.ipynb` contains extended analysis comparing Chicago with other major cities, including trend visualizations and preliminary difference-in-differences exploration.
+* `four_cities_comparison.ipynb` contains comparative analysis of energy use trends across Chicago and three peer cities, including visualizations of Site EUI changes and cross-city trend comparisons used to support the difference-in-differences analysis.

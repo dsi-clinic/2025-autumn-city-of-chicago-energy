@@ -8,6 +8,7 @@ It includes reusable functions for comparing variable distributions before and a
  Choropleth maps using Altair and metric change analyses.
 """
 
+import json
 import logging
 import math
 import re
@@ -17,8 +18,22 @@ from collections.abc import Callable, Iterable
 import altair as alt
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import numpy as np
 import pandas as pd
 import seaborn as sns
+from statsmodels.regression.linear_model import RegressionResultsWrapper
+
+from utils.fix_effect_utils import extract_model_coefficients
+
+
+def _geo_data(geo: dict) -> dict:
+    # Accept dict OR a pre-encoded data URL string
+    if isinstance(geo, str):
+        return alt.Data(
+            url=geo, format=alt.DataFormat(type="json", property="features")
+        )
+    return alt.Data(values=geo["features"])
+
 
 # ----------Comparable analysis (Bar charts and delta charts)-----------
 
@@ -1304,7 +1319,8 @@ def create_choropleth_layer(
 
     # Base map (grey background)
     base = (
-        alt.Chart(alt.Data(values=geojson["features"]))
+        # alt.Chart(alt.Data(values=geojson["features"]))
+        alt.Chart(_geo_data(geojson))
         .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
         .project(type="mercator")
         .properties(width=600, height=400)
@@ -1312,7 +1328,8 @@ def create_choropleth_layer(
 
     # Data overlay
     overlay = (
-        alt.Chart(alt.Data(values=geojson["features"]))
+        # alt.Chart(alt.Data(values=geojson["features"]))
+        alt.Chart(_geo_data(geojson))
         .mark_geoshape(stroke="white", strokeWidth=0.5)
         .transform_lookup(
             lookup=feature_id,
@@ -1469,14 +1486,16 @@ def plot_metric_change_map(
         title = f"Change in {metric} (Latest - Earliest Year, Multi-Year Buildings)"
 
         base = (
-            alt.Chart(alt.Data(values=geojson["features"]))
+            # alt.Chart(alt.Data(values=geojson["features"]))
+            alt.Chart(_geo_data(geojson))
             .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
             .project(type="mercator")
             .properties(width=600, height=400)
         )
 
         overlay = (
-            alt.Chart(alt.Data(values=geojson["features"]))
+            # alt.Chart(alt.Data(values=geojson["features"]))
+            alt.Chart(_geo_data(geojson))
             .mark_geoshape(stroke="white", strokeWidth=0.5)
             .transform_lookup(
                 lookup="properties.pri_neigh",
@@ -1503,8 +1522,599 @@ def plot_metric_change_map(
     return charts
 
 
+def plot_noncompliance_per_year(
+    chi_geo: dict,
+    area: pd.DataFrame,
+    geo_area_name_key: str = "properties.community",
+    color_field: str = "share_non_compliant",
+    scheme: str = "blues",
+    domain: tuple[float, float] | None = (0.0, 1.0),
+    width: int = 650,
+    height: int = 550,
+    year: int | None = None,
+    title: str | None = None,
+) -> alt.Chart:
+    """Choropleth map for overall compliance metrics by community area.
+
+    Expected columns in `area`:
+      - area_key, area_display
+      - num_submitted, num_non_compliant, denom
+      - share_submitted, share_non_compliant
+      - exempt (optional)
+      - plus `color_field`
+    """
+    if color_field not in area.columns:
+        raise ValueError(
+            f"color_field='{color_field}' not found in area table. "
+            f"Columns: {list(area.columns)}"
+        )
+
+    pretty = {
+        "share_submitted": "Share submitted",
+        "share_non_compliant": "Share non-compliant",
+        "num_submitted": "Number submitted",
+        "num_non_compliant": "Number non-compliant",
+        "denom": "Submitted + Non-compliant",
+        "exempt": "Exempt",
+    }.get(color_field, color_field.replace("_", " ").title())
+
+    if title is None:
+        title = (
+            f"{pretty} — Overall ({year})"
+            if year is not None
+            else f"{pretty} — Overall"
+        )
+
+    # Shares should be formatted as %, counts as integers
+    is_share = color_field.startswith("share_")
+    metric_tooltip = (
+        alt.Tooltip(f"{color_field}:Q", title=pretty, format=".1%")
+        if is_share
+        else alt.Tooltip(f"{color_field}:Q", title=pretty, format=",d")
+    )
+
+    scale = (
+        alt.Scale(scheme=scheme, domain=list(domain))
+        if domain is not None
+        else alt.Scale(scheme=scheme)
+    )
+
+    base = (
+        alt.Chart(_geo_data(chi_geo))
+        .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
+        .project(type="mercator")
+        .properties(width=width, height=height)
+    )
+
+    # Only include fields we actually want to show in tooltip (no duplicates!)
+    lookup_fields = [
+        "area_display",
+        "num_submitted",
+        "num_non_compliant",
+        "denom",
+        "share_submitted" if "share_submitted" in area.columns else None,
+        "share_non_compliant" if "share_non_compliant" in area.columns else None,
+        "exempt" if "exempt" in area.columns else None,
+        color_field,
+    ]
+    lookup_fields = [f for f in lookup_fields if f is not None]
+
+    tooltips = [
+        alt.Tooltip("area_display:N", title="Community Area"),
+        metric_tooltip,
+        alt.Tooltip("num_submitted:Q", title="Submitted", format=",d"),
+        alt.Tooltip("num_non_compliant:Q", title="Non-compliant", format=",d"),
+    ]
+    if "exempt" in area.columns:
+        tooltips.append(alt.Tooltip("exempt:Q", title="Exempt", format=",d"))
+
+    overlay = (
+        alt.Chart(_geo_data(chi_geo))
+        .mark_geoshape(stroke="white", strokeWidth=0.5)
+        .project(type="mercator")
+        # normalize geojson community string -> match area_key (UPPER)
+        .transform_calculate(area_key=f"upper(trim(datum.{geo_area_name_key}))")
+        .transform_lookup(
+            lookup="area_key",
+            from_=alt.LookupData(
+                area,
+                key="area_key",
+                fields=lookup_fields,
+            ),
+        )
+        .encode(
+            color=alt.condition(
+                alt.expr.isValid(alt.datum[color_field]),
+                alt.Color(
+                    f"{color_field}:Q",
+                    title=pretty,
+                    scale=scale,
+                ),
+                alt.value("lightgrey"),
+            ),
+            tooltip=tooltips,
+        )
+    )
+
+    return (base + overlay).properties(title=title)
+
+
+def plot_noncompliance_by_property_selected(
+    chi_geo: dict,
+    area_type: pd.DataFrame,
+    selected_ptype: str,
+    geo_area_name_key: str = "properties.community",
+    color_field: str = "share_non_compliant",
+    scheme: str = "blues",
+    domain: tuple[float, float] | None = (0.0, 1.0),
+    width: int = 650,
+    height: int = 550,
+    year: int | None = None,
+    title: str | None = None,
+) -> alt.Chart:
+    """Right-map choropleth for a selected category value (ptype_key)."""
+    if area_type.empty:
+        return (
+            alt.Chart(pd.DataFrame())
+            .mark_geoshape()
+            .properties(width=width, height=height)
+        )
+
+    if color_field not in area_type.columns:
+        raise ValueError(
+            f"color_field='{color_field}' not found in area_type table. "
+            f"Available columns: {list(area_type.columns)}"
+        )
+
+    pretty = {
+        "share_non_compliant": "Share Non-Compliant",
+        "share_submitted": "Share Submitted",
+        "num_submitted": "Number Submitted",
+        "num_non_compliant": "Number Non-Compliant",
+        "denom": "Submitted + Non-Compliant",
+    }.get(color_field, color_field.replace("_", " ").title())
+
+    if title is None:
+        title = (
+            f"{pretty} by Community Area — {selected_ptype} ({year})"
+            if year is not None
+            else f"{pretty} by Community Area — {selected_ptype}"
+        )
+
+    scale = (
+        alt.Scale(scheme=scheme, domain=list(domain))
+        if domain is not None
+        else alt.Scale(scheme=scheme)
+    )
+
+    base = (
+        alt.Chart(_geo_data(chi_geo))
+        .mark_geoshape(stroke="white", strokeWidth=0.5, fill="lightgrey")
+        .project(type="mercator")
+        .properties(width=width, height=height)
+    )
+
+    # geo -> normalized key
+    ptype_lit = json.dumps(str(selected_ptype))
+    geo_lookup_expr = f"upper(trim(datum.{geo_area_name_key})) + '|' + {ptype_lit}"
+
+    # lookup fields (only if exist)
+    candidate_fields = [
+        "area_display",
+        "ptype_key",
+        "num_submitted",
+        "num_non_compliant",
+        "denom",
+        "share_non_compliant",
+        "share_submitted" if "share_submitted" in area_type.columns else None,
+        color_field,
+    ]
+    lookup_fields = [
+        f for f in candidate_fields if f is not None and f in area_type.columns
+    ]
+
+    valid_check = (
+        alt.expr.isValid(alt.datum.denom)
+        if "denom" in lookup_fields
+        else alt.expr.isValid(alt.datum[color_field])
+    )
+
+    is_share = color_field.startswith("share_")
+    metric_tt = (
+        alt.Tooltip(f"{color_field}:Q", title=pretty, format=".1%")
+        if is_share
+        else alt.Tooltip(f"{color_field}:Q", title=pretty, format=",d")
+        if color_field.startswith("num_") or color_field == "denom"
+        else alt.Tooltip(f"{color_field}:Q", title=pretty)
+    )
+
+    tooltips = [
+        alt.Tooltip("area_display:N", title="Community Area"),
+        alt.Tooltip("ptype_key:N", title="Category"),
+        metric_tt,
+    ]
+
+    if "num_submitted" in lookup_fields:
+        tooltips.append(alt.Tooltip("num_submitted:Q", title="Submitted", format=",d"))
+    if "num_non_compliant" in lookup_fields:
+        tooltips.append(
+            alt.Tooltip("num_non_compliant:Q", title="Non-Compliant", format=",d")
+        )
+    if "denom" in lookup_fields:
+        tooltips.append(
+            alt.Tooltip("denom:Q", title="Submitted + Non-Compliant", format=",d")
+        )
+    if "share_non_compliant" in lookup_fields and color_field != "share_non_compliant":
+        tooltips.append(
+            alt.Tooltip(
+                "share_non_compliant:Q", title="Share non-compliant", format=".1%"
+            )
+        )
+
+    overlay = (
+        alt.Chart(_geo_data(chi_geo))
+        .mark_geoshape(stroke="white", strokeWidth=0.5)
+        .project(type="mercator")
+        .transform_calculate(_lookup_key=geo_lookup_expr)
+        .transform_lookup(
+            lookup="_lookup_key",
+            from_=alt.LookupData(
+                area_type,
+                key="_lookup_key",
+                fields=lookup_fields,
+            ),
+        )
+        .encode(
+            color=alt.condition(
+                valid_check,
+                alt.Color(f"{color_field}:Q", title=pretty, scale=scale),
+                alt.value("lightgrey"),
+            ),
+            tooltip=tooltips,
+        )
+    )
+
+    return (base + overlay).properties(title=title)
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     )
+
+# ------------------------------------------------------------------
+# fixed effects Functions
+# ------------------------------------------------------------------
+
+
+def plot_fixed_effects_coefficients(
+    model: RegressionResultsWrapper, errorbars: float = 1.96
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plots the coefficients of the Fixed Effects model to show relative impact with error bars
+
+    Parameters:
+    model: An object of a fitted statsmodels regression results
+    errorbars: Numerical value for error bars with 1.96 being for 95% interval
+
+    tuple: returns the fig and ax of the plotS
+    """
+    three_star_cutoff = 0.001
+    one_star_cutoff = 0.05
+    df_params = pd.DataFrame(
+        {
+            "coef": model.params,
+            "err": model.bse,
+            "pval": model.pvalues,
+            "name": model.params.index,
+        }
+    )
+
+    df_plot = df_params[df_params["name"].str.contains("Rating_Cat")].copy()
+
+    df_plot["clean_name"] = df_plot["name"].apply(
+        lambda x: x.split("T.")[1].replace("]", "") + " Stars"
+    )
+
+    df_plot = df_plot.sort_values("name")
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.errorbar(
+        x=df_plot["coef"],
+        y=df_plot["clean_name"],
+        xerr=errorbars * df_plot["err"],
+        fmt="o",
+        color="teal",
+        ecolor="gray",
+        capsize=5,
+        label="Impact vs 0.0 Star",
+        markersize=8,
+    )
+
+    for idx, row in df_plot.iterrows():
+        if row["pval"] < three_star_cutoff:
+            p_text = "p < 0.001 ***"
+            weight = "bold"
+        elif row["pval"] < one_star_cutoff:
+            p_text = f"p = {row['pval']:.3f} *"
+            weight = "bold"
+        else:
+            p_text = f"p = {row['pval']:.3f}"
+            weight = "normal"
+
+        ax.text(
+            x=row["coef"],
+            y=df_plot.index.get_loc(idx) + 0.15,
+            s=p_text,
+            fontsize=9,
+            color="darkslategray",
+            ha="center",
+            fontweight=weight,
+            bbox={"facecolor": "white", "alpha": 0.5, "edgecolor": "none", "pad": 0},
+        )
+
+    ax.axvline(x=0, color="red", linestyle="--", label="0.0 Star Baseline")
+
+    ax.set_title("Relative Change in EUI by Star Rating (Fixed Effects)", fontsize=14)
+    ax.set_xlabel(
+        "Difference in Future Change vs. 0-Star Baseline (Positive = Less Savings)",
+        fontsize=12,
+    )
+
+    ax.grid(True, linestyle=":", alpha=0.6)
+
+    ax.set_ylim(-0.5, len(df_plot) - 0.5)
+
+    ax.legend(loc="lower right")
+
+    plt.tight_layout()
+    return fig, ax
+
+
+def plotting_FE_star_coef(formula_list: list) -> plt.Figure:
+    """Plotting the change of Star score coefficients from different formulas
+
+    Orientation:
+    - X axis: Formula name (Categorical)
+    - Y axis: Coefficient Value (Numeric)
+
+    Input:
+    - List of tuples of all the models that will be plotted
+        - All the models must have the same coefficients
+        - Within tuple -> (RegressionResultsWrapper, 'Formula Name')
+    """
+    # --- 1. DATA PREP ---
+    df_coef = extract_model_coefficients(formula_list)
+
+    bins = [0, 0.001, 0.01, 0.05, 0.1, 1.0]
+    labels = ["p < 0.001", "p < 0.01", "p < 0.05", "p < 0.10", "p ≥ 0.10"]
+    df_coef["sig_category"] = pd.cut(
+        df_coef["pval"], bins=bins, labels=labels, include_lowest=True
+    )
+
+    color_map = {
+        "p < 0.001": "#004500",
+        "p < 0.01": "#079F07",
+        "p < 0.05": "#63E863",
+        "p < 0.10": "#FFD700",
+        "p ≥ 0.10": "#D3D3D3",
+    }
+    df_coef["color"] = df_coef["sig_category"].map(color_map)
+
+    # --- 2. PLOT SETUP ---
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    formulas = df_coef["formula"].unique()
+    star_ratings = sorted(df_coef["star_rating"].unique())
+
+    x_map = {f: i for i, f in enumerate(formulas)}
+    df_coef["x"] = df_coef["formula"].map(x_map)
+
+    line_colors = dict(
+        zip(star_ratings, plt.cm.tab10(np.linspace(0, 1, len(star_ratings))))
+    )
+
+    # --- 3. PLOTTING ---
+    for star in star_ratings:
+        sub = df_coef[df_coef["star_rating"] == star].sort_values("x")
+        ax.plot(sub["x"], sub["coef"], color=line_colors[star], lw=1, zorder=1)
+
+    df_coef = df_coef.sort_values("pval", ascending=False)
+    ax.scatter(
+        df_coef["x"],
+        df_coef["coef"],
+        s=100,
+        c=df_coef["color"],
+        edgecolors="black",
+        alpha=0.9,
+        zorder=2,
+    )
+
+    # --- 4. FORMATTING ---
+    ax.set_xticks(list(x_map.values()))
+    ax.set_xticklabels(list(x_map.keys()), ha="right")
+
+    ax.set_ylabel(
+        "Coefficient Value of EUI Change (Reference: 0 Stars)",
+        fontsize=12,
+        fontweight="bold",
+    )
+
+    ax.set_title(
+        "Change of Star Rating Coefficients Across Model Specifications",
+        fontsize=14,
+        fontweight="bold",
+        pad=20,
+    )
+
+    ax.grid(True, alpha=0.5, axis="y", linestyle="--")
+    ax.axhline(y=0, color="black", linestyle="--", linewidth=1)
+
+    # --- 5. LEGENDS ---
+    star_handles = [
+        ax.plot(
+            [],
+            [],
+            marker="o",
+            ls="None",
+            color=line_colors[s],
+            label=f"{s} Stars",
+            markersize=10,
+        )[0]
+        for s in star_ratings
+    ]
+
+    l1 = ax.legend(
+        handles=star_handles,
+        title="Star Rating",
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1),
+    )
+
+    sig_handles = []
+    for label in labels:
+        if label in color_map:
+            h = ax.scatter(
+                [],
+                [],
+                c=color_map[label],
+                label=label.replace(" ", ""),
+                s=100,
+                edgecolors="black",
+            )
+            sig_handles.append(h)
+
+    ax.legend(
+        handles=sig_handles,
+        title="Significance",
+        loc="upper left",
+        bbox_to_anchor=(1.02, 0.6),
+    )
+
+    ax.add_artist(l1)
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
+
+    return fig
+
+
+def plot_compliance_rate_over_time(
+    df: pd.DataFrame,
+    year_col: str,
+    group_col: str,
+    value_col: str,
+    y_title: str,
+) -> alt.Chart:
+    """Plot a time series of a compliance metric, optionally split by group.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Aggregated dataframe with one row per (year, group) containing the metric
+        to be plotted.
+    year_col : str
+        Column name containing the year values on the x‑axis (e.g., "Data Year").
+    group_col : str
+        Column name used to distinguish series (e.g., property type, time built).
+    value_col : str
+        Column name of the numeric compliance metric to plot on the y‑axis
+        (e.g., share_submitted, n_non_compliant).
+    y_title : str
+        Human‑readable label for the y‑axis (e.g., "Share submitted").
+
+    Returns:
+    -------
+    alt.Chart
+        Altair line chart showing the compliance metric over time, with one line
+        per group if multiple groups are present, otherwise a single line without
+        a legend.
+    """
+    if df.empty:
+        return alt.Chart(pd.DataFrame({year_col: [], value_col: []})).mark_line()
+
+    base = alt.Chart(df).encode(
+        x=alt.X(f"{year_col}:O", title="Data Year"),
+        y=alt.Y(f"{value_col}:Q", title=y_title),
+        tooltip=[
+            alt.Tooltip(f"{year_col}:O", title="Year"),
+            alt.Tooltip(f"{group_col}:N", title=group_col),
+            alt.Tooltip(f"{value_col}:Q", title=y_title, format=".2f"),
+        ],
+    )
+
+    # If only one group, no color legend
+    unique_groups = set(df[group_col].dropna().head(2))
+    if len(unique_groups) <= 1:
+        chart = base.mark_line(point=True, strokeWidth=2, color="#1f77b4")
+    else:
+        chart = base.encode(
+            color=alt.Color(f"{group_col}:N", title=group_col),
+        ).mark_line(point=True, strokeWidth=2)
+
+    return chart.properties(height=400)
+
+
+def plot_compliance_status_facets(
+    df: pd.DataFrame,  # wide format: one row per (year, group)
+    year_col: str,
+    group_col: str,
+    n_submitted_col: str,
+    n_exempt_col: str,
+    n_not_submitted_col: str,
+) -> alt.Chart:
+    """Create a horizontally concatenated stacked bar chart of reporting status by year and group.
+
+    The chart shows one panel per year (side by side), with bars grouped by
+    `group_col` on the x-axis and stacked by reporting status
+    ("Submitted", "Exempt", "Not submitted") with counts on the y-axis.
+    """
+    if df.empty:
+        return alt.Chart().mark_bar()
+
+    df_long = df.rename(
+        columns={
+            n_submitted_col: "Submitted",
+            n_exempt_col: "Exempt",
+            n_not_submitted_col: "Not submitted",
+        }
+    ).melt(
+        id_vars=[year_col, group_col],
+        value_vars=["Submitted", "Exempt", "Not submitted"],
+        var_name="Status",
+        value_name="Count",
+    )
+
+    base = (
+        alt.Chart(df_long)
+        .encode(
+            x=alt.X(f"{group_col}:N", title=group_col),
+            y=alt.Y("Count:Q", title="Number of buildings"),
+            color=alt.Color(
+                "Status:N",
+                title="Reporting Status",
+                scale=alt.Scale(
+                    domain=["Submitted", "Exempt", "Not submitted"],
+                    range=["#1f77b4", "#2ca02c", "#d62728"],
+                ),
+            ),
+            tooltip=[
+                alt.Tooltip(f"{year_col}:O", title="Year"),
+                alt.Tooltip(f"{group_col}:N", title=group_col),
+                alt.Tooltip("Status:N"),
+                alt.Tooltip("Count:Q", title="Buildings"),
+            ],
+        )
+        .mark_bar()
+        .properties(height=250)
+    )
+
+    years = sorted(df[year_col].unique())
+    panels = []
+    for year in years:
+        panel = base.transform_filter(alt.datum[year_col] == year).properties(
+            title=str(year)
+        )
+        panels.append(panel)
+
+    chart = alt.hconcat(*panels, title=alt.TitleParams("Data Year"))
+    return chart

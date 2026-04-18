@@ -170,11 +170,25 @@ st.markdown("#### Buildings with Complete Data (2016-2023)")
 # -------------------- Dataset Summary Metrics --------------------
 # Calculate key statistics for the dataset
 if not core_dataframe.empty:
-    total_buildings = core_dataframe["ID"].nunique() if "ID" in core_dataframe.columns else len(core_dataframe)
-    years_covered = sorted(core_dataframe["Data Year"].unique()) if "Data Year" in core_dataframe.columns else []
-    year_range = f"{min(years_covered)}–{max(years_covered)}" if years_covered else "N/A"
+    total_buildings = (
+        core_dataframe["ID"].nunique()
+        if "ID" in core_dataframe.columns
+        else len(core_dataframe)
+    )
+    years_covered = (
+        sorted(core_dataframe["Data Year"].unique())
+        if "Data Year" in core_dataframe.columns
+        else []
+    )
+    year_range = (
+        f"{min(years_covered)}–{max(years_covered)}" if years_covered else "N/A"
+    )
     total_records = len(core_dataframe)
-    building_types = core_dataframe["Primary Property Type"].nunique() if "Primary Property Type" in core_dataframe.columns else "N/A"
+    building_types = (
+        core_dataframe["Primary Property Type"].nunique()
+        if "Primary Property Type" in core_dataframe.columns
+        else "N/A"
+    )
 
     st.markdown("**Dataset at a Glance**")
     # Display metrics in columns

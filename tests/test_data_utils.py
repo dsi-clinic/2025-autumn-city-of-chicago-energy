@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from utils.data_utils import (
     add_compliance_status,
@@ -54,9 +53,7 @@ class TestCleanPropertyType:
 
     def test_clean_property_type_basic(self):
         """Test basic property type cleaning."""
-        df = pd.DataFrame({
-            "Primary Property Type": ["office", "RETAIL", "Hotel"]
-        })
+        df = pd.DataFrame({"Primary Property Type": ["office", "RETAIL", "Hotel"]})
         result = clean_property_type(df)
         assert "Primary Property Type" in result.columns
         assert result["Primary Property Type"].iloc[0] == "Office"
@@ -66,19 +63,17 @@ class TestCleanPropertyType:
     def test_clean_property_type_removes_small_groups(self):
         """Test that property types with < MIN_PRIMARY_PROPERTY entries are removed."""
         # Create a dataframe where some types have very few entries
-        df = pd.DataFrame({
-            "Primary Property Type": ["office"] * 200 + ["rare_type"] * 5
-        })
+        df = pd.DataFrame(
+            {"Primary Property Type": ["office"] * 200 + ["rare_type"] * 5}
+        )
         result = clean_property_type(df)
         # Should only keep "office" since "rare_type" has < 150 entries
-        assert "rare_type" not in result["Primary Property Type"].values
-        assert "Office" in result["Primary Property Type"].values
+        assert "rare_type" not in result["Primary Property Type"].to_numpy()
+        assert "Office" in result["Primary Property Type"].to_numpy()
 
     def test_clean_property_type_handles_nan(self):
         """Test that NaN values are preserved."""
-        df = pd.DataFrame({
-            "Primary Property Type": ["office", np.nan, "retail"]
-        })
+        df = pd.DataFrame({"Primary Property Type": ["office", np.nan, "retail"]})
         result = clean_property_type(df)
         assert pd.isna(result["Primary Property Type"].iloc[1])
 
@@ -88,17 +83,13 @@ class TestCleanYearBuilt:
 
     def test_clean_year_built_valid_years(self):
         """Test that valid years are preserved."""
-        df = pd.DataFrame({
-            "Year Built": [1950, 1980, 2000]
-        })
+        df = pd.DataFrame({"Year Built": [1950, 1980, 2000]})
         result = clean_year_built(df)
         pd.testing.assert_series_equal(result["Year Built"], df["Year Built"])
 
     def test_clean_year_built_filters_too_old(self):
         """Test that years before 1800 are filtered."""
-        df = pd.DataFrame({
-            "Year Built": [1700, 1950, 2000]
-        })
+        df = pd.DataFrame({"Year Built": [1700, 1950, 2000]})
         result = clean_year_built(df)
         assert pd.isna(result["Year Built"].iloc[0])
         assert result["Year Built"].iloc[1] == 1950
@@ -106,9 +97,7 @@ class TestCleanYearBuilt:
 
     def test_clean_year_built_filters_future(self):
         """Test that future years are filtered."""
-        df = pd.DataFrame({
-            "Year Built": [1950, 2000, 2100]
-        })
+        df = pd.DataFrame({"Year Built": [1950, 2000, 2100]})
         result = clean_year_built(df)
         assert result["Year Built"].iloc[0] == 1950
         assert result["Year Built"].iloc[1] == 2000
@@ -116,9 +105,7 @@ class TestCleanYearBuilt:
 
     def test_clean_year_built_converts_to_int(self):
         """Test that years are converted to integers."""
-        df = pd.DataFrame({
-            "Year Built": [1950.0, 1980.5, 2000.0]
-        })
+        df = pd.DataFrame({"Year Built": [1950.0, 1980.5, 2000.0]})
         result = clean_year_built(df)
         assert result["Year Built"].dtype == "Int64"
 
@@ -128,11 +115,13 @@ class TestAssignEffectiveYearBuilt:
 
     def test_assign_effective_year_built_basic(self):
         """Test basic effective year built assignment."""
-        df = pd.DataFrame({
-            "Year Built": [1950, np.nan, 2000],
-            "ID": ["A", "B", "C"],
-            "Data Year": [2020, 2020, 2020]
-        })
+        df = pd.DataFrame(
+            {
+                "Year Built": [1950, np.nan, 2000],
+                "ID": ["A", "B", "C"],
+                "Data Year": [2020, 2020, 2020],
+            }
+        )
         result = assign_effective_year_built(df)
         assert result["Year Built"].iloc[0] == 1950
         assert result["Year Built"].iloc[2] == 2000
@@ -141,11 +130,13 @@ class TestAssignEffectiveYearBuilt:
 
     def test_assign_effective_year_built_fills_from_other_years(self):
         """Test that missing years are filled from other years for same building."""
-        df = pd.DataFrame({
-            "Year Built": [1950, np.nan, np.nan],
-            "ID": ["A", "A", "B"],
-            "Data Year": [2018, 2019, 2020]
-        })
+        df = pd.DataFrame(
+            {
+                "Year Built": [1950, np.nan, np.nan],
+                "ID": ["A", "A", "B"],
+                "Data Year": [2018, 2019, 2020],
+            }
+        )
         result = assign_effective_year_built(df)
         # Second row should get year from first row (same ID)
         assert result["Year Built"].iloc[0] == 1950
@@ -157,9 +148,7 @@ class TestCategorizeTimeBuilt:
 
     def test_categorize_time_built_basic(self):
         """Test basic time built categorization."""
-        df = pd.DataFrame({
-            "Year Built": [1940, 1960, 1980, 2000, 2020]
-        })
+        df = pd.DataFrame({"Year Built": [1940, 1960, 1980, 2000, 2020]})
         result = categorize_time_built(df)
         assert "Time Built" in result.columns
         assert result["Time Built"].iloc[0] == "Pre-1945"
@@ -170,9 +159,7 @@ class TestCategorizeTimeBuilt:
 
     def test_categorize_time_built_edge_cases(self):
         """Test edge cases for time built categorization."""
-        df = pd.DataFrame({
-            "Year Built": [1945, 1970, 1990, 2010]
-        })
+        df = pd.DataFrame({"Year Built": [1945, 1970, 1990, 2010]})
         result = categorize_time_built(df)
         # Boundary values
         assert result["Time Built"].iloc[0] == "1945-1969"
@@ -182,9 +169,7 @@ class TestCategorizeTimeBuilt:
 
     def test_categorize_time_built_handles_nan(self):
         """Test that NaN values are handled."""
-        df = pd.DataFrame({
-            "Year Built": [1950, np.nan, 2000]
-        })
+        df = pd.DataFrame({"Year Built": [1950, np.nan, 2000]})
         result = categorize_time_built(df)
         assert pd.isna(result["Time Built"].iloc[1])
 
@@ -194,9 +179,9 @@ class TestAddTopLevelPropertyType:
 
     def test_add_top_level_property_type_basic(self):
         """Test basic top level property type assignment."""
-        df = pd.DataFrame({
-            "Primary Property Type": ["Office", "Retail Store", "Hotel"]
-        })
+        df = pd.DataFrame(
+            {"Primary Property Type": ["Office", "Retail Store", "Hotel"]}
+        )
         result = add_top_level_property_type(df)
         assert "Top Level Property Type" in result.columns
         assert result["Top Level Property Type"].iloc[0] == "Commercial"
@@ -205,17 +190,13 @@ class TestAddTopLevelPropertyType:
 
     def test_add_top_level_property_type_multifamily(self):
         """Test multifamily categorization."""
-        df = pd.DataFrame({
-            "Primary Property Type": ["Multifamily Housing"]
-        })
+        df = pd.DataFrame({"Primary Property Type": ["Multifamily Housing"]})
         result = add_top_level_property_type(df)
         assert result["Top Level Property Type"].iloc[0] == "Multifamily"
 
     def test_add_top_level_property_type_handles_unknown(self):
         """Test that unknown types are categorized as Other."""
-        df = pd.DataFrame({
-            "Primary Property Type": ["Unknown Type"]
-        })
+        df = pd.DataFrame({"Primary Property Type": ["Unknown Type"]})
         result = add_top_level_property_type(df)
         # Unknown types should be categorized as "Other" or left as is
         assert "Top Level Property Type" in result.columns
@@ -226,11 +207,13 @@ class TestConcurrentBuildings:
 
     def test_concurrent_buildings_basic(self):
         """Test basic concurrent buildings filtering."""
-        df = pd.DataFrame({
-            "ID": ["A", "A", "A", "B", "B"],
-            "Data Year": [2016, 2017, 2018, 2016, 2017],
-            "Reporting Status": ["submitted"] * 5
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "A", "A", "B", "B"],
+                "Data Year": [2016, 2017, 2018, 2016, 2017],
+                "Reporting Status": ["submitted"] * 5,
+            }
+        )
         result = concurrent_buildings(df, start_year=2016, end_year=2018)
         # Only building A should remain (has all 3 years)
         assert len(result) == 3
@@ -238,11 +221,13 @@ class TestConcurrentBuildings:
 
     def test_concurrent_buildings_filters_incomplete(self):
         """Test that buildings without all years are filtered out."""
-        df = pd.DataFrame({
-            "ID": ["A", "A", "B", "B", "B"],
-            "Data Year": [2016, 2017, 2016, 2017, 2018],
-            "Reporting Status": ["submitted"] * 5
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "A", "B", "B", "B"],
+                "Data Year": [2016, 2017, 2016, 2017, 2018],
+                "Reporting Status": ["submitted"] * 5,
+            }
+        )
         result = concurrent_buildings(df, start_year=2016, end_year=2018)
         # Only building B should remain (has all 3 years)
         assert len(result) == 3
@@ -250,12 +235,16 @@ class TestConcurrentBuildings:
 
     def test_concurrent_buildings_respects_status(self):
         """Test that reporting status is respected for years >= 2018."""
-        df = pd.DataFrame({
-            "ID": ["A"] * 3,
-            "Data Year": [2017, 2018, 2019],
-            "Reporting Status": ["submitted", "submitted", "not submitted"]
-        })
-        result = concurrent_buildings(df, start_year=2017, end_year=2019, status_year=2018)
+        df = pd.DataFrame(
+            {
+                "ID": ["A"] * 3,
+                "Data Year": [2017, 2018, 2019],
+                "Reporting Status": ["submitted", "submitted", "not submitted"],
+            }
+        )
+        result = concurrent_buildings(
+            df, start_year=2017, end_year=2019, status_year=2018
+        )
         # Should filter out the 2019 row with "not submitted" status
         assert len(result) == 2
 
@@ -265,11 +254,13 @@ class TestAddComplianceStatus:
 
     def test_add_compliance_status_basic(self):
         """Test basic compliance status flags."""
-        df = pd.DataFrame({
-            "Reporting Status": ["submitted", "not submitted", "exempt"],
-            "Electricity Use (kBtu)": [1000, np.nan, 500],
-            "Natural Gas Use (kBtu)": [500, np.nan, 300]
-        })
+        df = pd.DataFrame(
+            {
+                "Reporting Status": ["submitted", "not submitted", "exempt"],
+                "Electricity Use (kBtu)": [1000, np.nan, 500],
+                "Natural Gas Use (kBtu)": [500, np.nan, 300],
+            }
+        )
         energy_cols = ["Electricity Use (kBtu)", "Natural Gas Use (kBtu)"]
         result = add_compliance_status(df, energy_cols=energy_cols)
 
@@ -284,11 +275,13 @@ class TestAddComplianceStatus:
 
     def test_add_compliance_status_non_compliant(self):
         """Test non-compliant flag for submitted but missing data."""
-        df = pd.DataFrame({
-            "Reporting Status": ["submitted", "submitted"],
-            "Electricity Use (kBtu)": [1000, np.nan],
-            "Natural Gas Use (kBtu)": [500, np.nan]
-        })
+        df = pd.DataFrame(
+            {
+                "Reporting Status": ["submitted", "submitted"],
+                "Electricity Use (kBtu)": [1000, np.nan],
+                "Natural Gas Use (kBtu)": [500, np.nan],
+            }
+        )
         energy_cols = ["Electricity Use (kBtu)", "Natural Gas Use (kBtu)"]
         result = add_compliance_status(df, energy_cols=energy_cols)
 

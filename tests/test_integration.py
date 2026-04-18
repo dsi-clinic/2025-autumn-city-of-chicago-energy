@@ -1,8 +1,11 @@
 """Integration tests for end-to-end workflows."""
 
 import pandas as pd
-import pytest
 
+from utils.dashboard_utils import (
+    aggregate_compliance_over_time,
+    filter_energy_by_selections,
+)
 from utils.data_utils import (
     add_compliance_status,
     add_top_level_property_type,
@@ -10,10 +13,6 @@ from utils.data_utils import (
     categorize_time_built,
     clean_property_type,
     clean_year_built,
-)
-from utils.dashboard_utils import (
-    aggregate_compliance_over_time,
-    filter_energy_by_selections,
 )
 
 
@@ -23,17 +22,19 @@ class TestDataPipeline:
     def test_full_cleaning_pipeline(self):
         """Test that data can go through all cleaning steps without errors."""
         # Create raw data
-        df = pd.DataFrame({
-            "ID": ["A", "B", "C"],
-            "Data Year": [2020, 2020, 2020],
-            "Primary Property Type": ["office", "retail store", "hotel"],
-            "Year Built": [1950.0, 1980.0, 2000.0],
-            "Community Area": ["loop", "hyde park", "loop"],
-            "ENERGY STAR Score": [80, 70, 90],
-            "Reporting Status": ["submitted", "submitted", "not submitted"],
-            "Electricity Use (kBtu)": [1000, 2000, None],
-            "Natural Gas Use (kBtu)": [500, 1000, None]
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "B", "C"],
+                "Data Year": [2020, 2020, 2020],
+                "Primary Property Type": ["office", "retail store", "hotel"],
+                "Year Built": [1950.0, 1980.0, 2000.0],
+                "Community Area": ["loop", "hyde park", "loop"],
+                "ENERGY STAR Score": [80, 70, 90],
+                "Reporting Status": ["submitted", "submitted", "not submitted"],
+                "Electricity Use (kBtu)": [1000, 2000, None],
+                "Natural Gas Use (kBtu)": [500, 1000, None],
+            }
+        )
 
         # Apply cleaning steps in order
         df = clean_year_built(df)
@@ -58,14 +59,16 @@ class TestDataPipeline:
 
     def test_filtering_after_cleaning(self):
         """Test that filtering works correctly after cleaning."""
-        df = pd.DataFrame({
-            "ID": ["A", "B", "C"],
-            "Data Year": [2020, 2020, 2020],
-            "Primary Property Type": ["Office", "Retail", "Office"],
-            "Year Built": [1940, 1960, 1980],
-            "Community Area": ["Loop", "Hyde Park", "Loop"],
-            "Top Level Property Type": ["Commercial", "Commercial", "Commercial"]
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "B", "C"],
+                "Data Year": [2020, 2020, 2020],
+                "Primary Property Type": ["Office", "Retail", "Office"],
+                "Year Built": [1940, 1960, 1980],
+                "Community Area": ["Loop", "Hyde Park", "Loop"],
+                "Top Level Property Type": ["Commercial", "Commercial", "Commercial"],
+            }
+        )
 
         # Apply categorization
         df = categorize_time_built(df)
@@ -76,7 +79,7 @@ class TestDataPipeline:
             sel_time_built=["Pre-1945"],
             sel_ppt=["Office"],
             sel_ca=["Loop"],
-            sel_tlpt=["Commercial"]
+            sel_tlpt=["Commercial"],
         )
 
         assert len(filtered) == 1
@@ -84,16 +87,23 @@ class TestDataPipeline:
 
     def test_compliance_aggregation_pipeline(self):
         """Test compliance aggregation after data preparation."""
-        df = pd.DataFrame({
-            "ID": ["A", "B", "C", "D"],
-            "Data Year": [2020] * 4,
-            "Primary Property Type": ["Office"] * 4,
-            "Year Built": [1940, 1960, 1980, 2000],
-            "Community Area": ["Loop"] * 4,
-            "Reporting Status": ["submitted", "submitted", "not submitted", "exempt"],
-            "Electricity Use (kBtu)": [1000, 2000, None, 1500],
-            "Natural Gas Use (kBtu)": [500, 1000, None, 750]
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "B", "C", "D"],
+                "Data Year": [2020] * 4,
+                "Primary Property Type": ["Office"] * 4,
+                "Year Built": [1940, 1960, 1980, 2000],
+                "Community Area": ["Loop"] * 4,
+                "Reporting Status": [
+                    "submitted",
+                    "submitted",
+                    "not submitted",
+                    "exempt",
+                ],
+                "Electricity Use (kBtu)": [1000, 2000, None, 1500],
+                "Natural Gas Use (kBtu)": [500, 1000, None, 750],
+            }
+        )
 
         # Prepare data
         df = categorize_time_built(df)
@@ -114,12 +124,14 @@ class TestDataConsistency:
 
     def test_id_preservation(self):
         """Test that building IDs are preserved through transformations."""
-        df = pd.DataFrame({
-            "ID": ["A", "B", "C"],
-            "Data Year": [2020, 2020, 2020],
-            "Primary Property Type": ["office", "retail", "hotel"],
-            "Year Built": [1950, 1980, 2000],
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "B", "C"],
+                "Data Year": [2020, 2020, 2020],
+                "Primary Property Type": ["office", "retail", "hotel"],
+                "Year Built": [1950, 1980, 2000],
+            }
+        )
 
         original_ids = set(df["ID"])
 
@@ -132,12 +144,14 @@ class TestDataConsistency:
 
     def test_row_count_preservation(self):
         """Test that row counts are preserved (unless intentionally filtered)."""
-        df = pd.DataFrame({
-            "ID": ["A", "B", "C"],
-            "Data Year": [2020, 2020, 2020],
-            "Primary Property Type": ["office", "retail", "hotel"],
-            "Year Built": [1950, 1980, 2000],
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "B", "C"],
+                "Data Year": [2020, 2020, 2020],
+                "Primary Property Type": ["office", "retail", "hotel"],
+                "Year Built": [1950, 1980, 2000],
+            }
+        )
 
         original_len = len(df)
 
@@ -150,12 +164,14 @@ class TestDataConsistency:
 
     def test_data_type_consistency(self):
         """Test that data types are consistent after transformations."""
-        df = pd.DataFrame({
-            "ID": ["A", "B", "C"],
-            "Data Year": [2020, 2020, 2020],
-            "Primary Property Type": ["office", "retail", "hotel"],
-            "Year Built": [1950.0, 1980.0, 2000.0],
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "B", "C"],
+                "Data Year": [2020, 2020, 2020],
+                "Primary Property Type": ["office", "retail", "hotel"],
+                "Year Built": [1950.0, 1980.0, 2000.0],
+            }
+        )
 
         df = clean_year_built(df)
 
@@ -173,12 +189,9 @@ class TestErrorHandling:
 
     def test_empty_dataframe_handling(self):
         """Test that functions handle empty dataframes gracefully."""
-        df = pd.DataFrame({
-            "ID": [],
-            "Data Year": [],
-            "Primary Property Type": [],
-            "Year Built": []
-        })
+        df = pd.DataFrame(
+            {"ID": [], "Data Year": [], "Primary Property Type": [], "Year Built": []}
+        )
 
         # Should not raise errors
         df = clean_year_built(df)
@@ -188,12 +201,14 @@ class TestErrorHandling:
 
     def test_all_nan_handling(self):
         """Test handling of columns with all NaN values."""
-        df = pd.DataFrame({
-            "ID": ["A", "B", "C"],
-            "Data Year": [2020, 2020, 2020],
-            "Primary Property Type": ["Office", "Retail", "Hotel"],
-            "Year Built": [None, None, None]
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "B", "C"],
+                "Data Year": [2020, 2020, 2020],
+                "Primary Property Type": ["Office", "Retail", "Hotel"],
+                "Year Built": [None, None, None],
+            }
+        )
 
         df = clean_year_built(df)
         df = categorize_time_built(df)
@@ -204,10 +219,12 @@ class TestErrorHandling:
 
     def test_invalid_year_handling(self):
         """Test handling of invalid year values."""
-        df = pd.DataFrame({
-            "ID": ["A", "B", "C"],
-            "Year Built": [1700, 1950, 2100]  # Too old, valid, too new
-        })
+        df = pd.DataFrame(
+            {
+                "ID": ["A", "B", "C"],
+                "Year Built": [1700, 1950, 2100],  # Too old, valid, too new
+            }
+        )
 
         df = clean_year_built(df)
 

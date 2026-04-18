@@ -307,7 +307,9 @@ def precompute_animation_maps(
     This function caches the expensive map generation, enabling smooth animation
     by only updating the container content rather than triggering full page reloads.
     """
-    return {year: render_yearly_map(year, geojson_data, data, log_scale) for year in years}
+    return {
+        year: render_yearly_map(year, geojson_data, data, log_scale) for year in years
+    }
 
 
 # grouped charts #-------------------------------------------------------------------s
@@ -402,9 +404,7 @@ def render_dashboard_section(
         st.markdown("<div style='margin-bottom:20px;'></div>", unsafe_allow_html=True)
 
         # Trend Line Plot
-        st.markdown(
-            f"##### Trend over time of {metric}"
-        )
+        st.markdown(f"##### Trend over time of {metric}")
         fig2, ax2 = plot_trend_by_year(com_df, [metric], "mean")[0]
         ax2.set_title("")
 
@@ -511,6 +511,7 @@ def filter_energy_by_selections(
     pd.DataFrame
         Filtered dataframe respecting all non‑None selections.
     """
+
     def normalize_selection(sel: list[str] | str, column_name: str) -> list[str]:
         """Convert string to list and handle 'All' special case."""
         if sel == "All":
@@ -656,7 +657,9 @@ def show_helpful_filter_error(
                 if len(selected_values) == 0:
                     st.markdown(f"- **{filter_name}**: ❌ None selected")
                 else:
-                    st.markdown(f"- **{filter_name}**: {', '.join(map(str, selected_values))}")
+                    st.markdown(
+                        f"- **{filter_name}**: {', '.join(map(str, selected_values))}"
+                    )
             else:
                 st.markdown(f"- **{filter_name}**: {selected_values}")
 
@@ -684,7 +687,9 @@ def show_helpful_filter_error(
             f"- **Most restrictive filter**: `{most_restrictive}` "
             f"(only {filter_match_counts[most_restrictive]:,} buildings match)"
         )
-        st.markdown(f"- **Recommendation**: Try selecting more values for `{most_restrictive}`")
+        st.markdown(
+            f"- **Recommendation**: Try selecting more values for `{most_restrictive}`"
+        )
 
     # Show quick actions
     st.markdown("### 🔧 Quick Actions:")

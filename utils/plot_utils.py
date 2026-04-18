@@ -26,6 +26,8 @@ from statsmodels.regression.linear_model import RegressionResultsWrapper
 
 from utils.fix_effect_utils import extract_model_coefficients
 
+logger = logging.getLogger(__name__)
+
 
 def _geo_data(geo: dict) -> dict:
     # Accept dict OR a pre-encoded data URL string
@@ -1092,9 +1094,7 @@ def plot_energy_persistence_by_year(
             .mark_circle(size=55)
             .encode(
                 x=alt.X(f"{delta_col}:Q", title=f"Δ {year}→{year+1} ({_unit})"),
-                y=alt.Y(
-                    f"{delta_next_col}:Q", title=f"Δ {year+1}→{year+2} ({_unit})"
-                ),
+                y=alt.Y(f"{delta_next_col}:Q", title=f"Δ {year+1}→{year+2} ({_unit})"),
                 color=alt.condition(
                     type_select, f"{property_col}:N", alt.value("lightgray")
                 ),
@@ -1315,11 +1315,16 @@ def aggregate_metric(dff: pd.DataFrame, metric: str) -> pd.DataFrame:
             if col
             not in ["ID", "Property Name", "Address", "Community Area", "Neighborhood"]
         ]
+        _max_display = 10
         logger.error(f"Metric '{metric}' not found in DataFrame columns")
         raise ValueError(
             f"Metric column '{metric}' not found in DataFrame. "
-            f"Available metric columns: {available_metrics[:10]}"
-            + (f" (and {len(available_metrics) - 10} more)" if len(available_metrics) > 10 else "")
+            f"Available metric columns: {available_metrics[:_max_display]}"
+            + (
+                f" (and {len(available_metrics) - _max_display} more)"
+                if len(available_metrics) > _max_display
+                else ""
+            )
         )
 
     # Core aggregation logic

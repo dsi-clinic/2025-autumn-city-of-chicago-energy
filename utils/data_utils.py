@@ -354,13 +354,21 @@ def clean_property_type(energy_df: pd.DataFrame) -> pd.DataFrame:
 
     # Step 2: Apply cleaned Primary Property Type (vectorized for 10-50x speedup)
     # First, normalize the Primary Property Type column
-    normalized_types = result_df["Primary Property Type"].astype(str).str.strip().str.lower()
-    is_missing = normalized_types.isin(missing_vals) | result_df["Primary Property Type"].isna()
+    normalized_types = (
+        result_df["Primary Property Type"].astype(str).str.strip().str.lower()
+    )
+    is_missing = (
+        normalized_types.isin(missing_vals) | result_df["Primary Property Type"].isna()
+    )
 
     # Map IDs to types - use id_to_type for missing values, otherwise keep original
-    result_df["Primary Property Type"] = result_df["ID"].map(id_to_type).where(
-        is_missing,
-        result_df["ID"].map(id_to_type).fillna(result_df["Primary Property Type"])
+    result_df["Primary Property Type"] = (
+        result_df["ID"]
+        .map(id_to_type)
+        .where(
+            is_missing,
+            result_df["ID"].map(id_to_type).fillna(result_df["Primary Property Type"]),
+        )
     )
 
     # Step 3: NEW - Merge rare types (<150 instances) to "other"

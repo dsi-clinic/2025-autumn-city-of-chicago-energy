@@ -105,7 +105,7 @@ with col1:
                 )
                 st.progress(
                     st.session_state.current_index / (len(years_list) - 1),
-                    text=f"Year {current_year} ({st.session_state.current_index + 1}/{len(years_list)})"
+                    text=f"Year {current_year} ({st.session_state.current_index + 1}/{len(years_list)})",
                 )
             time.sleep(1)
             st.session_state.current_index += 1

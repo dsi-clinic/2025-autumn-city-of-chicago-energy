@@ -97,7 +97,7 @@ with col1:
         "Year:",
         full_year_list,
         key="energy_year",
-        help="Choose a specific year or view average across all years"
+        help="Choose a specific year or view average across all years",
     )
 
 if trend_year != "Average (All Years)":

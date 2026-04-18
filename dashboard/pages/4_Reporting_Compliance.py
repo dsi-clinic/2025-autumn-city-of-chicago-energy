@@ -336,7 +336,9 @@ def main() -> None:
     )
 
     if energy_df_filtered.empty:
-        st.warning("No buildings match the selected filters. Please broaden your selections.")
+        st.warning(
+            "No buildings match the selected filters. Please broaden your selections."
+        )
         st.stop()
 
     MIN_YEARS_REQUIRED = 2
